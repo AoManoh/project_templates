@@ -39,6 +39,7 @@
 | 执行高风险操作前，必须采集基线状态（`status`、`branch -vv`、`log --oneline`） | merge/rebase 前 |
 | 默认同步策略为 `git pull --ff-only origin <branch>` | 每次开始开发前 |
 | `push` 被拒绝时，默认走 `fetch + merge`，禁止直接强推 | 推送失败时 |
+| 生成或执行提交前，必须审查 `git status -sb` 与 `git diff --cached`，并按 SPEC.md §9 编写带 body 的标准提交信息 | commit 前 |
 | 含大体量数据目录或共享分支时，禁止直接 `rebase` | 处理分叉时 |
 | merge/rebase 前必须创建救援分支 `rescue/<timestamp>` | 风险操作前 |
 | 双端开发必须单向串行同步，避免两端并发提交后互拉 | WSL/SSH 协作时 |
@@ -65,6 +66,21 @@ git remote -v
 | 共享分支 + 大文件/数据目录 | 使用 merge 整合远端提交 | 对共享分支做 rebase 重写历史 |
 | rebase 过程中异常 | 先 `rebase --abort`，回到可解释状态，再按 merge 流程处理 | 在异常状态继续叠加操作 |
 | 双端开发同步 | 一端提交推送后，另一端仅 `pull --ff-only` 同步 | 两端各自先提交，再互相拉取 |
+
+### 3.3 标准提交模板
+
+```text
+<type>(<scope>): <中文摘要>
+
+背景：
+- 为什么需要这次变更。
+
+变更：
+- 本次提交实际修改了什么。
+
+影响与边界：
+- 本次提交带来的行为变化、兼容影响、风险或未覆盖范围。
+```
 
 ---
 
@@ -137,6 +153,17 @@ git remote -v
    - 决策原因（为什么不是另一种方案）
 2. 标注关键提交哈希与分支名。
 
+### 4.7 prepare_standard_commit_message
+
+**目的**: 生成可审计、可回溯、可统一解析的标准提交信息。
+
+**执行步骤**:
+1. 运行 `git status -sb`，确认工作区只包含本次任务预期文件。
+2. 运行 `git diff --cached` 审查已暂存内容；若无暂存内容，先审查 `git diff` 并只暂存本次任务文件。
+3. 根据实际 diff 判断 `type`、`scope` 和中文摘要。
+4. 按 SPEC.md §9 写出包含 `背景`、`变更`、`影响与边界` 的 body。
+5. 验证证据不作为 body 固定段落；若需要进入提交信息，可放入 `Tests:` footer。不得因为 body 不写验证而宣称未验证的工作已完成。
+
 ---
 
 ## 5. Skill 编排流程
@@ -148,11 +175,15 @@ git remote -v
    |
 2. sync_with_remote
    |
-3. 开发与提交
+3. 开发、验证与暂存
    |
-4. push
+4. prepare_standard_commit_message
    |
-5. record_decision_log（按需）
+5. commit
+   |
+6. push
+   |
+7. record_decision_log（按需）
 ```
 
 ### 5.2 推送失败流程
