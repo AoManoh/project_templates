@@ -143,4 +143,4 @@ task 退出前，必须满足以下条件：
 
 ### 7.6 与提交约束的联动
 
-当 task 计划中包含 commit 步骤时，提交信息必须满足 [git-governance SPEC.md §9 最小提交约束](../git-governance/SPEC.md#9-最小提交约束)的要求（`[task 标识] 中文摘要`）。
+当 task 计划中包含 commit 步骤时，提交信息必须满足 [git-governance SPEC.md §9 标准提交信息规范](../git-governance/SPEC.md#9-标准提交信息规范)的要求。提交必须包含 body，并写清背景、变更、影响与边界。
