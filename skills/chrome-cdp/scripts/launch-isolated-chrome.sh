@@ -112,7 +112,9 @@ Port file: ${port_file}
 
 Use this instance with:
   source '${env_file}'
+  node skills/chrome-cdp/scripts/cdp.mjs doctor
   node skills/chrome-cdp/scripts/cdp.mjs list
+  node skills/chrome-cdp/scripts/cdp.mjs attach <target>
 EOF
 
 if [[ ! -f "$port_file" ]]; then
