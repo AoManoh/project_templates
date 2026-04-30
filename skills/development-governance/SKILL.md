@@ -23,10 +23,9 @@
 
 | 依赖 | 用途 | 必要性 |
 |------|------|--------|
-| Augment Codebase | 事实检索、影响面定位 | 必需 |
+| auggie-mcp Skill | 源码语义检索、事实检索、影响面定位 | 必需 |
 | view 工具 | 读取真实文件确认 | 必需 |
 | code-review Skill | review 与验证证据采集 | 推荐 |
-| Codex CLI | 多模型交叉审查 | 推荐 |
 | docs/references/ | 记录外部依据与技术决策 | 推荐 |
 
 ### 1.3 关联规范
@@ -34,8 +33,6 @@
 详细约束见：[SPEC.md](./SPEC.md)
 
 质量验证详见：[../code-review/SKILL.md](../code-review/SKILL.md)
-
-Codex 编排详见：[../codex-orchestration/SKILL.md](../codex-orchestration/SKILL.md)
 
 ---
 
@@ -126,7 +123,7 @@ docs/development/YYYY-MM-DD-{scope}.md
 **执行步骤**:
 1. 按已审核的 task 逐项实现。
 2. 每完成一个 task，立即执行对应测试、文档同步和代码 review。
-3. 如安装了 Codex CLI，在 review 阶段调用 Codex 辅助审查。
+3. 中高风险变更可并行委派子代理、人工 reviewer 或外部审查工具；主 AI 助手必须合并结论并处理阻塞问题。
 
 ### 4.5 close_task_without_residual_debt
 
