@@ -1,7 +1,7 @@
 # 质量保障 Skill
 
 **skill_id**: `code-review`
-**版本**: 1.0.0
+**版本**: 1.4.0
 **output_dir**: `docs/code-review/`
 
 ---
@@ -28,14 +28,12 @@
 | 依赖 | 用途 | 必要性 |
 |------|------|--------|
 | Chrome MCP | 浏览器自动化操作、截图、网络监控 | E2E/API 测试必需 |
-| Augment Codebase | 源码检索、根因追溯 | 所有活动必需 |
+| auggie-mcp Skill | 源码语义检索、根因追溯 | 推荐；失败时必须改用 view 工具读取真实文件 |
 | view 工具 | 读取源码文件确认 | 所有活动必需 |
-| Codex CLI | 多模型交叉审查与复核 | 静态代码审查推荐 |
 
 ### 1.3 关联规范
 
 报告格式标准详见：[SPEC.md](./SPEC.md)
-Codex 执行编排详见：[../codex-orchestration/SKILL.md](../codex-orchestration/SKILL.md) 与 [../codex-orchestration/SPEC.md](../codex-orchestration/SPEC.md)
 目录快速参考见：[../../docs/code-review/README.md](../../docs/code-review/README.md)
 
 ---
@@ -45,17 +43,12 @@ Codex 执行编排详见：[../codex-orchestration/SKILL.md](../codex-orchestrat
 | 行为 | 时机 |
 |------|------|
 | 读取 SPEC.md | 开始测试前 |
-| 写入报告或 Codex 审查产物前，必须先确认项目根为当前 `AGENTS.md` 所在目录；所有 `docs/code-review/*` 路径相对该目录解析 | 创建报告前 |
+| 写入报告前，必须先确认项目根为当前 `AGENTS.md` 所在目录；所有 `docs/code-review/*` 路径相对该目录解析 | 创建报告前 |
 | 获取真实时间（中国上海时间） | 创建报告前 |
 | 按本 SKILL.md 流程执行测试 | 测试过程中 |
 | 按 SPEC.md 格式生成报告 | 测试完成后 |
 | 每个问题必须包含 5 要素 | 记录问题时 |
 | 每个问题必须附带证据 | 记录问题时 |
-| 使用 Codex CLI 前，必须先读取 codex-orchestration 的 SKILL/SPEC | 调用前 |
-| 触发 Codex CLI 审查时，Prompt 必须先落盘到 `docs/code-review/_inputs/` | 调用 `codex exec` 前 |
-| Codex 原始输出必须写入 `docs/code-review/_codex_raw/` | 调用 `codex exec` 时 |
-| Codex 执行失败必须写入 `docs/code-review/_codex_failures/` | 执行失败时 |
-| Codex 执行后必须校验输出文件非空，失败至少重试一次 | 执行后 |
 
 ---
 
@@ -117,49 +110,15 @@ docs/code-review/YYYY-MM-DD-{scope}.md
 4. 控制台日志（运行时错误）
 5. 源码片段（根因定位）
 
-### 3.7 Codex CLI 执行规范（静态审查）
+### 3.7 静态审查辅助原则
 
 | 项目 | 约束 |
 |------|------|
-| Prompt 输入目录 | `docs/code-review/_inputs/*.prompt.md` |
-| 原始输出目录 | `docs/code-review/_codex_raw/*.md` |
-| 失败记录目录 | `docs/code-review/_codex_failures/*.md` |
-| 默认超时 | `1200s`（快速检查 `600s`，大范围审查 `1800s`） |
-| 默认心跳 | `20s`（用于输出运行中状态，避免误判卡住） |
-| 默认重试 | 失败自动重试 `1` 次（建议 `>=1`，否则无法触发“连续 2 次网络失败”判定） |
-| Prompt 传入方式 | 必须通过 stdin（`codex exec ... - < <prompt_file>`） |
-| 通用执行脚本 | `skills/codex-orchestration/scripts/run_codex_exec.sh` |
-| 细则维护边界 | `AGENTS.md` 仅保留摘要，Codex 执行细则以 `skills/codex-orchestration/{SKILL,SPEC}.md` 为准 |
-| 代理策略（非交互） | `launch-process` 非交互执行时，优先显式传 `--proxy-port` 或 `--proxy-url`，不要依赖 `.bashrc` 里的 `codex()` 函数 |
-| 外层超时缓冲 | 若通过 `launch-process` 调用，`max_wait_seconds >= --timeout + 30s`；或使用 `wait=false` + 轮询 |
-| 网络失败降级阈值 | 单次脚本调用内连续 2 次网络型失败（`timeout_with_partial_stream_output` / `network_unstable_after_retries` / 日志含 `reconnect`）后直接降级人工审查 |
-
-**推荐命令**：
-
-```bash
-bash skills/codex-orchestration/scripts/run_codex_exec.sh \
-  --scope cr-shared-branch \
-  --prompt-file docs/code-review/_inputs/cr-shared-branch.prompt.md \
-  --raw-dir docs/code-review/_codex_raw \
-  --failure-dir docs/code-review/_codex_failures \
-  --proxy-port 7899 \
-  --timeout 1200 \
-  --heartbeat 20 \
-  --retries 1
-```
-
-兼容入口（已有流程可不改）：
-
-```bash
-bash scripts/codex/run_code_review.sh \
-  --scope cr-shared-branch \
-  --prompt-file docs/code-review/_inputs/cr-shared-branch.prompt.md \
-  --timeout 1200 \
-  --heartbeat 20 \
-  --retries 1
-```
-
-恢复提示：`codex exec resume <session_id> - < <prompt_file>` 通常不要附加 `-o/-s` 参数。
+| 默认执行者 | 当前 AI 助手必须完成审查，不得把审查责任完全转交给工具 |
+| 可选辅助 | 中高风险变更可并行委派子代理、人工 reviewer 或外部审查工具 |
+| 结论合并 | 辅助 reviewer 的结论必须由主 AI 助手去重、分级并判断是否阻塞 |
+| 证据要求 | 最终报告必须引用实际使用的源码、测试、日志或辅助审查结论 |
+| 降级策略 | 辅助 reviewer 不可用时，必须降级为主 AI 助手直接审查并说明范围 |
 
 ---
 
@@ -227,11 +186,11 @@ bash scripts/codex/run_code_review.sh \
 
 **执行步骤**:
 1. **前端追溯**：
-   - 从网络请求的 URL 出发，使用 Augment Codebase 检索前端 API 调用代码
+   - 从网络请求的 URL 出发，使用 auggie-mcp Skill 检索前端 API 调用代码
    - 使用 view 工具确认源码内容（避免缓存不一致）
    - 追溯调用链：组件 -> store/composable -> API 函数
 2. **后端追溯**（如果网络请求返回错误）：
-   - 从 API 路由出发，使用 Augment Codebase 检索后端路由处理函数
+   - 从 API 路由出发，使用 auggie-mcp Skill 检索后端路由处理函数
    - 使用 view 工具确认源码内容
    - 追溯调用链：路由 -> 服务层 -> 数据层
 3. **根因定位**：
@@ -239,8 +198,8 @@ bash scripts/codex/run_code_review.sh \
    - 分析深层原因（为什么代码会写成这样）
 
 **关键约束**:
-- Augment Codebase 检索后，必须用 view 工具读取真实文件确认
-- 如果 Augment Codebase 调用失败，重试一次后改用 view 工具直接读取
+- auggie-mcp Skill 检索后，必须用 view 工具读取真实文件确认
+- 如果 auggie-mcp Skill 调用失败，重试一次后改用 view 工具直接读取
 
 ### 4.6 generate_bug_report
 
@@ -259,22 +218,22 @@ bash scripts/codex/run_code_review.sh \
 
 **输出**: 符合 SPEC.md 规范的完整 Markdown 报告文件，写入 `docs/code-review/`
 
-### 4.7 run_codex_cli_review
+### 4.7 conduct_static_code_review
 
-**目的**: 用 Codex CLI 生成可追溯的静态审查原始结果，并进行执行校验。
+**目的**: 对变更范围进行源码级静态审查，发现实现缺陷、回归风险和验证缺口。
 
 **执行步骤**:
-1. 生成并落盘 Prompt 文件到 `docs/code-review/_inputs/`。
-2. 执行 `skills/codex-orchestration/scripts/run_codex_exec.sh` 调用 Codex CLI（或兼容入口 `scripts/codex/run_code_review.sh`）。
-3. 校验原始输出文件存在且非空。
-4. 如果失败，检查 `docs/code-review/_codex_failures/` 中失败记录并在报告中标注执行状态。
-5. 若失败记录包含 `session_id`，可使用 `codex exec resume <session_id> - < <prompt_file>` 恢复。
-6. 若连续 2 次网络型失败，停止继续重试，降级为人工审查并在报告中说明降级原因。
+1. 确定审查范围：变更文件、关联调用链、配置、脚本、测试和文档。
+2. 使用 auggie-mcp Skill 检索相关代码，再用 view 工具读取真实文件确认。
+3. 检查安全性、并发/资源安全、性能、数据一致性、错误处理、架构边界、测试覆盖和文档同步。
+4. 中高风险变更可并行委派子代理、人工 reviewer 或外部审查工具补充视角。
+5. 合并所有审查结论，去重、分级，并标出阻塞项、非阻塞风险和验证缺口。
+6. 将最终结论写入质量报告；若使用辅助 reviewer，报告必须记录其范围和结论摘要。
 
 **关键约束**:
-- 不允许仅使用 `/tmp` 作为最终产物目录。
-- 不允许把长 Prompt 直接拼接在命令行中。
-- 对“有流式日志输出但最终超时”的情况，按“部分输出失败”处理，不得记为“无输出”。
+- 主 AI 助手必须对最终审查结论负责，不得直接转贴辅助 reviewer 输出。
+- 辅助 reviewer 不可用时，不得跳过审查；必须降级为主 AI 助手直接审查。
+- 静态审查必须基于真实源码和当前 diff，不得只按聊天上下文判断。
 
 ---
 
@@ -317,19 +276,16 @@ bash scripts/codex/run_code_review.sh \
 ```
 1. 确定审查范围（变更文件列表）
    |
-2. 生成 Prompt 文件（写入 `docs/code-review/_inputs/`）
+2. conduct_static_code_review（源码级静态审查）
+   |-- 可选：委派子代理、人工 reviewer 或外部审查工具补充检查
+   |-- 遍历变更文件并读取完整源码
+   |-- 检查：安全性、性能、数据一致性、错误处理、架构边界、测试覆盖
+   |-- 合并并分级审查结论
    |
-3. run_codex_cli_review（生成原始审查结果）
-   |
-4. for each file（遍历每个文件）:
-   |-- 使用 Augment Codebase 检索相关代码
-   |-- 使用 view 工具读取完整文件
-   |-- 检查：安全性、性能、数据一致性、错误处理、代码规范
-   |
-5. for each issue（遍历每个问题）:
+3. for each issue（遍历每个问题）:
    |-- trace_root_cause（根因追溯）
    |
-6. generate_bug_report（生成报告）
+4. generate_bug_report（生成报告）
 ```
 
 ---
@@ -343,13 +299,11 @@ bash scripts/codex/run_code_review.sh \
 | 页面加载超时 | 重试一次，仍失败则记录为环境问题 |
 | 元素不可点击 | 记录为 UI 问题（元素被遮挡或禁用） |
 | 网络请求超时 | 记录为后端问题 |
-| Augment Codebase 失败 | 重试一次，仍失败则用 view 工具直接读取 |
+| auggie-mcp Skill 失败 | 重试一次，仍失败则用 view 工具直接读取 |
 | 截图失败 | 用 take_snapshot 文本快照替代 |
-| Codex 执行超时（exit code 124） | 提升超时到 `1200~1800s` 并自动重试一次，仍失败则写入 `docs/code-review/_codex_failures/` |
-| Codex 有流式输出但最终超时 | 归类为“部分输出失败”，保留日志和 `session_id`，可尝试 `resume` |
-| Codex 连续网络失败（2 次） | 判定为网络不可达，立即降级人工审查（不继续无效重试） |
-| Codex 输出为空或缺失 | 记录执行失败，禁止进入“审查完成”状态 |
-| Prompt 引号/转义错误 | 改为 Prompt 文件输入并使用包装脚本重试 |
+| 辅助 reviewer 不可用 | 记录降级原因，由主 AI 助手直接完成审查 |
+| 辅助 reviewer 输出为空或不可解释 | 不采纳该输出，改为主 AI 助手直接审查并说明原因 |
+| 外部工具执行失败 | 不阻塞审查流程，记录失败范围并降级为主 AI 助手审查 |
 
 ### 6.2 测试中断恢复
 

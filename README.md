@@ -52,6 +52,7 @@
 - `systematic-debugging`：问题复现、定位、修复、验证
 - `code-review`：静态审查、E2E、API 测试与证据链
 - `work-logs`：任务完成后的工作日志沉淀
+- `auggie-mcp`：Auggie MCP 源码语义检索、影响面定位和任务索引恢复
 - `git-governance`：共享分支同步、冲突处理、风险操作约束
 - `codex-orchestration`：Codex CLI 的非交互执行与失败恢复
 - `deepwiki`：项目文档生成治理
@@ -109,6 +110,7 @@ project_templates/
 │   ├── systematic-debugging/
 │   ├── code-review/
 │   ├── work-logs/
+│   ├── auggie-mcp/
 │   ├── git-governance/
 │   ├── codex-orchestration/
 │   ├── deepwiki/
