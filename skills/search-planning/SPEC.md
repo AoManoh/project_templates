@@ -1,6 +1,6 @@
 # 搜索规划 Skill 规范
 
-**版本**: 1.0.0
+**版本**: 1.1.0
 **适用范围**: comparative / exploratory / analytical 类多步调研的规划阶段
 
 ---
@@ -24,7 +24,7 @@
 | 5 | Tool mapping | 每个 sq 的 `tool`, `reason` | 每个 sq 都有工具决定 |
 | 6 | Execution order | `parallel_groups`, `sequential`, `estimated_rounds` | parallel 成员间无 `depends_on` 关系 |
 
-字段语义详细参考：[GrokSearch/skills/search-planning/references/phase-templates.md](https://github.com/AoManoh/GrokSearch/blob/main/skills/search-planning/references/phase-templates.md)
+字段语义以 grok-search MCP `src/grok_search/server.py` 中各 `plan_*` 工具的 `@mcp.tool()` `description` 和 `Annotated` 字段说明为最终事实源（`plan_intent` 在 line 1063 起，依次到 `plan_execution`）。本表只列必填字段与退出条件；可选字段（如 `is_revision` / `confidence` / `depends_on`）以源码注解为准。
 
 ---
 
@@ -157,11 +157,21 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 
 ---
 
-## 8. 与外部规范的关系
+## 8. 与外部事实源的关系
 
-- 上游英文 process-only skill：[`AoManoh/GrokSearch/skills/search-planning/`](https://github.com/AoManoh/GrokSearch/tree/main/skills/search-planning) 是同一方法论的 Anthropic Claude Skills 形态，可直接挂载到 Claude / Claude Code 客户端使用。
-- 本规范是该方法论的"治理化中文版"：补充了 `output_dir`、退出门禁、与其他 governance skill 的协作位点，并去掉了对具体 LLM 客户端的依赖。
-- 工具实现层（`mcp5_*` MCP 工具、`grok-web-search` 等可执行脚本）属于"事实源 / 可执行体"，本规范不与具体实现绑定；当上游脚本接口变更时，本规范保持稳定，仅由 §3 引用链接更新。
+| 层级 | 唯一事实源 | 本规范的关系 |
+|------|--------------|--------------|
+| 工具实现 | [`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) `src/grok_search/server.py` 的 13 个 `@mcp.tool()` 注册（含 `web_search` / `get_sources` / `web_fetch` / `web_map` / `get_config_info` / `switch_model` / `toggle_builtin_tools` / `plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution`）以及 `planning.py` / `sources.py` | 本规范引用工具名与参数语义时以源码为准；发生参数/字段语义变更时本规范的§2 必填表需同步 |
+| 方法论 | 本规范自身（§2 - §7） | 上游 process-only Anthropic Skill 镜像（如存在于 `AoManoh/GrokSearch/skills/search-planning/`）共享同一方法论，但措辞差异以本规范为准 |
+| 客户端调用 | 各客户端文档（Cursor / Windsurf / Claude Code 的 MCP 配置） | 本规范不与具体客户端绑定；客户端 prefix（如 `mcp5_plan_intent`）只在客户端文档中作为示例 |
+
+变更原则：
+
+- 工具语义变化（新增工具、字段语义重定义、阶段拆分）：以 `src/grok_search/server.py` 为准，本规范同步
+- 方法论调整（边界反模式、退出门禁、归档模板）：以本规范为唯一事实源，上游镜像跟进
+- 客户端 prefix 变化：不影响本规范
+
+完整 grok-search MCP 使用面（配置、调用参数、错误处理、代理隔离、信源后处理、模型切换、内置 WebSearch/WebFetch 路由控制）不在本规范范围内，由 `skills/grok-search/`（待补，独立任务）单独承接。
 
 ---
 
@@ -170,3 +180,4 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0.0 | 2026-04-30 | 初始版本，依据 GrokSearch search-planning Anthropic Skill 治理化改写 |
+| 1.1.0 | 2026-05-05 | 事实源校准：把"工具实现"事实源从未存在的 `skills/search-planning/` 改为 `src/grok_search/server.py` + `planning.py` + `sources.py`；删除主叙述中的 `mcp5_*` 客户端 prefix，统一使用 grok-search MCP 通用工具名；新增 §8 事实源分层表与 §1.5 / §7.3 scope 边界，明确 search-planning 只治理调研规划方法论，完整 grok-search MCP 使用由后续 `skills/grok-search/` 承接 |
