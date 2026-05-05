@@ -40,6 +40,8 @@
 | 读取 SPEC.md | 开始前 |
 | 写入需求产物前，必须先确认项目根为当前 `AGENTS.md` 所在目录；所有 `docs/requirements/*` 路径相对该目录解析 | 讨论收敛后 |
 | 先澄清再方案，先方案再细节 | 需求讨论时 |
+| 能从代码库或现有文档确认的问题，先读取事实源，不把可自查问题抛给用户 | 澄清前 |
+| 不确定性阻塞推进时，按决策树逐项追问；每次只问一个关键问题，并给出推荐答案和理由 | 需求讨论时 |
 | 每轮对话必须收敛至少一个边界 | 讨论过程中 |
 | 方案对比必须有结构化呈现 | 提出方案时 |
 | 需求产物必须写入 output_dir | 讨论收敛后 |
@@ -85,8 +87,10 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 
 **执行步骤**:
 1. 提炼用户意图的核心目标。
-2. 列出需要用户确认的关键假设。
-3. 明确本次需求的边界：做什么、不做什么。
+2. 先读取可用事实源：AGENTS、现有需求文档、源码、配置、测试或相关参考资料。
+3. 将剩余不确定性整理成决策树，优先追问会改变方案方向的分支。
+4. 每次只向用户提出一个关键问题，并给出 AI 推荐答案、推荐理由和选择后的影响。
+5. 明确本次需求的边界：做什么、不做什么。
 
 ### 4.2 compare_solutions
 
@@ -115,6 +119,17 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 2. 写入 `docs/requirements/YYYY-MM-DD-{scope}.md`。
 3. 在文档中标注未决项和需要后续确认的内容。
 
+### 4.5 decision_tree_clarification
+
+**目的**: 在模糊需求中避免一次性抛出问题清单，改为沿影响最大的决策路径逐步收敛。
+
+**执行步骤**:
+1. 列出会改变架构、范围、验收或风险等级的关键决策。
+2. 删除可通过代码库、现有文档或配置自查的问题。
+3. 按阻塞程度排序，只问当前最关键的一个问题。
+4. 问题必须包含推荐答案和理由，用户可以直接批准、驳回或改写。
+5. 每得到一个答案，就更新边界和候选方案，再进入下一个分支。
+
 ---
 
 ## 5. Skill 编排流程
@@ -124,13 +139,15 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 ```
 1. clarify_intent
    |
-2. compare_solutions（按需）
+2. decision_tree_clarification（按需）
    |
-3. define_acceptance_criteria
+3. compare_solutions（按需）
    |
-4. produce_requirements_document
+4. define_acceptance_criteria
    |
-5. 用户确认 → 进入开发阶段
+5. produce_requirements_document
+   |
+6. 用户确认 → 进入开发阶段
 ```
 
 ### 5.2 快速需求确认流程（小规模）
