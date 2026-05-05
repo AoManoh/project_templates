@@ -109,6 +109,9 @@
 │   ├── requirements-governance/ # 需求治理技能
 │   │   ├── SKILL.md
 │   │   └── SPEC.md
+│   ├── search-planning/       # 多步调研规划方法论技能
+│   │   ├── SKILL.md
+│   │   └── SPEC.md
 │   ├── systematic-debugging/  # 系统化调试技能
 │   │   ├── SKILL.md
 │   │   └── SPEC.md
@@ -345,6 +348,7 @@ AI 助手在接收到任务时，必须按以下流程判断是否需要触发 S
 | git-governance | [skills/git-governance/SKILL.md](skills/git-governance/SKILL.md) | Git 同步、提交、冲突和高风险历史操作 |
 | refactor-governance | [skills/refactor-governance/SKILL.md](skills/refactor-governance/SKILL.md) | 重构、迁移、兼容层和旧事实源清理 |
 | requirements-governance | [skills/requirements-governance/SKILL.md](skills/requirements-governance/SKILL.md) | 需求对齐、方案讨论和 PRD |
+| search-planning | [skills/search-planning/SKILL.md](skills/search-planning/SKILL.md) | 多步调研规划：意图、复杂度、子查询、搜索词、工具映射、执行顺序 |
 | systematic-debugging | [skills/systematic-debugging/SKILL.md](skills/systematic-debugging/SKILL.md) | 复现、定位、修复和验证问题 |
 | chrome-cdp | [skills/chrome-cdp/SKILL.md](skills/chrome-cdp/SKILL.md) | Chrome 页面检查、截图、交互和浏览器自动化 |
 
