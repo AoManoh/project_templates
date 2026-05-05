@@ -136,15 +136,15 @@
 |------|------|------|
 | `skills/` | Skill 定义 | 存放 AI 技能的规范文档，不存放产出物 |
 | `docs/_fragments/` | 静态片段 | 环境管理、TypeScript 配置等可复用片段 |
-| `docs/code-review/` | 产出目录 | code-review Skill 的输出目录 |
-| `docs/codex/` | 产出目录 | codex-orchestration Skill 的输出目录 |
-| `docs/deepwiki/` | 产出目录 | deepwiki Skill 的输出目录 |
-| `docs/development/` | 产出目录 | development-governance Skill 的输出目录 |
-| `docs/refactor/` | 产出目录 | refactor-governance Skill 的输出目录 |
-| `docs/debug/` | 产出目录 | systematic-debugging Skill 的输出目录 |
-| `docs/references/` | 参考目录 | 外部调研、技术依据与决策参考归档目录；当前决策须由阶段文档或 AGENTS 显式引用后生效 |
-| `docs/requirements/` | 产出目录 | requirements-governance Skill 的输出目录 |
-| `docs/work-logs/` | 产出目录 | work-logs Skill 的输出目录 |
+| `docs/code-review/` | 产出目录空壳 | code-review Skill 的输出目录；本地产物默认不提交 |
+| `docs/codex/` | 产出目录空壳 | codex-orchestration Skill 的输出目录；本地产物默认不提交 |
+| `docs/deepwiki/` | 产出目录空壳 | deepwiki Skill 的输出目录；本地产物默认不提交 |
+| `docs/development/` | 产出目录空壳 | development-governance Skill 的输出目录；本地产物默认不提交 |
+| `docs/refactor/` | 产出目录空壳 | refactor-governance Skill 的输出目录；本地产物默认不提交 |
+| `docs/debug/` | 产出目录空壳 | systematic-debugging Skill 的输出目录；本地产物默认不提交 |
+| `docs/references/` | 参考目录空壳 | 外部调研、技术依据与决策参考归档目录；本地产物默认不提交 |
+| `docs/requirements/` | 产出目录空壳 | requirements-governance Skill 的输出目录；本地产物默认不提交 |
+| `docs/work-logs/` | 产出目录空壳 | work-logs Skill 的输出目录；本地产物默认不提交 |
 
 ---
 
@@ -288,6 +288,16 @@ AI 助手不得把“工作量小、改动少、立即解决”作为默认优�
 - 禁止使用 emoji 表情
 - 流程图、架构图使用中文标注
 - 代码注释使用中文
+
+### 公共仓库与私有产物边界
+
+公共模板仓库默认只维护 `AGENTS.md`、`skills/`、`.gitignore`、`docs/_fragments/` 和 `docs/` 目录空壳。`docs/` 下的需求文档、开发记录、重构记录、调试记录、审查报告、工作日志和参考资料属于本地治理产物，默认不得提交到公共仓库。
+
+`docs/` 空壳通过 `.gitkeep` 占位文件保留目录结构。`.gitkeep` 不是 Git 参数，只是用于让 Git 跟踪空目录的占位文件；不得因为清理本地产物而删除已提交的 `.gitkeep`。
+
+根目录 `.gitignore` 是私有产物默认不入库的 Git 事实源。若用户明确要求公开某个 `docs/` 产物，必须先说明公开范围与原因，再在 `.gitignore` 中添加精确的 `!` 例外规则并单独提交；不得批量放开整个 `docs/` 目录。
+
+已经被 Git 跟踪的历史 `docs/` 文件不会因为 `.gitignore` 自动停止跟踪。需要调整跟踪范围时，必须使用 `git rm --cached` 做索引清理，保留本地文件，并作为单独的仓库治理提交处理。
 
 ### 提交规范
 
