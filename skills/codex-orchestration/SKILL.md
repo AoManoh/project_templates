@@ -19,8 +19,8 @@
 
 | 触发方式 | 条件 |
 |----------|------|
-| 显式触发 | 用户指令包含关键词：`codex`、`CLI`、`交叉审查`、`超时`、`resume`、`reconnect` |
-| 场景触发 | 需要将 Codex 执行链路标准化并跨项目复用 |
+| 显式触发 | 用户明确要求 Codex CLI 非交互执行、`codex exec`、`resume`、超时恢复、`reconnect` 排查或执行归档 |
+| 场景触发 | 不自动触发；必须有用户显式指令 |
 
 ### 1.2 前置依赖
 
@@ -34,7 +34,7 @@
 
 规范标准详见：[SPEC.md](./SPEC.md)
 
-治理分层说明：`AGENTS.md` 仅保留调用原则与入口约束，参数与失败处置细则只在本 Skill 与 `SPEC.md` 维护，避免双写漂移。
+治理分层说明：本 Skill 是可选的 Codex CLI 执行提供器，不参与默认 code review 主链；参数与失败处置细则只在本 Skill 与 `SPEC.md` 维护，避免双写漂移。
 
 ---
 
@@ -47,7 +47,7 @@
 | 原始输出与失败记录必须分目录落盘 | 调用过程中 |
 | 必须校验退出码与输出文件非空 | 调用后 |
 | 至少自动重试一次 | 首次失败后 |
-| 连续 2 次网络型失败必须降级人工审查 | 重试失败后 |
+| 连续 2 次网络型失败必须降级为主 AI 助手或人工接管 | 重试失败后 |
 | 记录 `session_id` 并给出 `resume` 建议 | 失败归档时 |
 
 ---
@@ -58,10 +58,10 @@
 
 ```bash
 bash skills/codex-orchestration/scripts/run_codex_exec.sh \
-  --scope cr-shared-branch \
-  --prompt-file docs/code-review/_inputs/cr-shared-branch.prompt.md \
-  --raw-dir docs/code-review/_codex_raw \
-  --failure-dir docs/code-review/_codex_failures \
+  --scope codex-task \
+  --prompt-file docs/codex/_inputs/codex-task.prompt.md \
+  --raw-dir docs/codex/_raw \
+  --failure-dir docs/codex/_failures \
   --proxy-port 7899 \
   --timeout 1200 \
   --heartbeat 20 \
@@ -97,7 +97,7 @@ bash skills/codex-orchestration/scripts/run_codex_exec.sh \
 **目的**: 规范 Prompt 输入，避免命令行内联风险。
 
 **执行步骤**:
-1. 生成 Prompt 文件并写入 `docs/**/_inputs/`。
+1. 生成 Prompt 文件并写入 `docs/codex/_inputs/`。
 2. 检查文件存在且非空。
 3. 通过 stdin 传给 Codex。
 
@@ -128,7 +128,7 @@ bash skills/codex-orchestration/scripts/run_codex_exec.sh \
 **执行步骤**:
 1. 检查失败类型是否连续命中网络型失败。
 2. 满足阈值后停止继续重试。
-3. 降级人工审查并在最终报告标注原因。
+3. 降级为主 AI 助手或人工接管，并在最终报告标注原因。
 
 ---
 
