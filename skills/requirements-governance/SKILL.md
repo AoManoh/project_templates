@@ -1,7 +1,7 @@
 # 需求治理 Skill
 
 **skill_id**: `requirements-governance`
-**版本**: 1.0.0
+**版本**: 1.1.0
 **output_dir**: `docs/requirements/`
 
 ---
@@ -17,7 +17,7 @@
 | 触发方式 | 条件 |
 |----------|------|
 | 显式触发 | 用户指令包含关键词：`需求`、`讨论需求`、`需求对齐`、`brainstorming`、`方案讨论`、`PRD` |
-| 场景触发 | 项目初始化阶段的需求讨论、功能方案对比、技术选型讨论、需求边界不清晰时 |
+| 场景触发 | 新项目启动、项目初始化阶段的需求讨论、功能方案对比、技术选型讨论、需求边界不清晰时 |
 
 ### 1.2 前置依赖
 
@@ -38,6 +38,7 @@
 | 行为 | 时机 |
 |------|------|
 | 读取 SPEC.md | 开始前 |
+| 新项目启动时，本 Skill 是第一入口；不得先触发 development-governance 或直接编码 | 项目启动时 |
 | 写入需求产物前，必须先确认项目根为当前 `AGENTS.md` 所在目录；所有 `docs/requirements/*` 路径相对该目录解析 | 讨论收敛后 |
 | 先澄清再方案，先方案再细节 | 需求讨论时 |
 | 能从代码库或现有文档确认的问题，先读取事实源，不把可自查问题抛给用户 | 澄清前 |
@@ -45,6 +46,7 @@
 | 每轮对话必须收敛至少一个边界 | 讨论过程中 |
 | 方案对比必须有结构化呈现 | 提出方案时 |
 | 需求产物必须写入 output_dir | 讨论收敛后 |
+| 新项目启动需求文档必须支撑 AGENTS.md 占位符实例化，并与 AGENTS.md 一起交给用户审核 | 项目启动收敛后 |
 | 不得在用户未确认时擅自进入开发阶段 | 阶段切换前 |
 
 ---
@@ -67,6 +69,12 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 
 `scope` 使用 kebab-case，推荐采用功能名或需求主题。
 
+新项目启动固定使用：
+
+```
+docs/requirements/YYYY-MM-DD-project-kickoff.md
+```
+
 ### 3.3 禁止事项速查
 
 | 禁止事项 | 为什么 |
@@ -76,6 +84,7 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 | 用技术术语替代需求描述 | 需求应该是用户可审计的，不是只有开发者能看懂的 |
 | 讨论发散后不收敛 | 需求对齐的目标是收敛，不是头脑风暴 |
 | 未经用户确认就进入开发 | 需求边界是用户的决策权，不是 AI 的 |
+| 新项目启动时跳过需求文档直接填写 AGENTS.md | 会把关键决策留在聊天上下文中，后续 AI 无法审计事实来源 |
 
 ---
 
@@ -130,6 +139,17 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 4. 问题必须包含推荐答案和理由，用户可以直接批准、驳回或改写。
 5. 每得到一个答案，就更新边界和候选方案，再进入下一个分支。
 
+### 4.6 project_kickoff_alignment
+
+**目的**: 将新项目启动从开放式聊天收敛为 AGENTS.md 可实例化的项目事实源。
+
+**执行步骤**:
+1. 确认当前项目根为 `AGENTS.md` 所在目录，读取 AGENTS 模板中的占位符、环境片段和验证入口要求。
+2. 按决策树确认项目名称、项目类型、核心定位、目标用户、核心目标、非目标、技术栈、目录结构、核心模块、架构方向、依赖、验证入口、运行/部署约束、安全与隐私边界。
+3. 如果技术选型、架构方向或社区实践需要外部依据，按 `search-planning` 产出 `docs/references/` 参考资料，并在项目启动需求文档中引用。
+4. 写入 `docs/requirements/YYYY-MM-DD-project-kickoff.md`，明确哪些内容用于实例化 AGENTS.md，哪些仍为未决项。
+5. 在 AGENTS.md 与项目启动需求文档经用户审核前，不进入开发治理或编码。
+
 ---
 
 ## 5. Skill 编排流程
@@ -150,7 +170,25 @@ docs/requirements/YYYY-MM-DD-{scope}.md
 6. 用户确认 → 进入开发阶段
 ```
 
-### 5.2 快速需求确认流程（小规模）
+### 5.2 新项目启动流程
+
+```
+1. project_kickoff_alignment
+   |
+2. decision_tree_clarification（按需）
+   |
+3. compare_solutions（技术选型或架构对比时）
+   |
+4. define_acceptance_criteria
+   |
+5. produce_requirements_document（project-kickoff）
+   |
+6. 实例化 AGENTS.md
+   |
+7. 用户确认 AGENTS.md 与项目启动需求文档 → 进入开发阶段
+```
+
+### 5.3 快速需求确认流程（小规模）
 
 ```
 1. clarify_intent（简化）
