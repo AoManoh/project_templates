@@ -323,7 +323,7 @@ proxy_no="${NO_PROXY:-${no_proxy:-}}"
   echo "2. 若为超时，将 --timeout 提升到 1200 或 1800"
   echo "3. 若存在 session_id，可尝试：codex exec resume \"$session_id\" - < \"$prompt_file\""
   echo "4. 注意：resume 子命令参数集与 exec 不同，通常不要附加 -o / -s；可按需添加 --skip-git-repo-check"
-  echo "5. 若连续网络失败（含 reconnect），按规范降级为人工审查并保留本失败记录"
+  echo "5. 若连续网络失败（含 reconnect），按规范降级为主 AI 助手或人工接管并保留本失败记录"
 } >"$failure_report"
 
 echo "[codex-orchestration] 失败记录已写入: $failure_report" >&2

@@ -13,7 +13,7 @@
 2. 可追溯：原始输出与失败证据可回查。
 3. 可恢复：失败后可继续（`resume`）或有明确降级路径。
 
-文档治理约束：`AGENTS.md` 仅保留简要治理原则，命令参数和失败处置细则以本规范为准。
+文档治理约束：`AGENTS.md` 仅保留 Skill 注册入口，命令参数和失败处置细则以本规范为准。
 
 ---
 
@@ -24,7 +24,7 @@
 | 字段 | 类型 | 约束 |
 |------|------|------|
 | `scope` | string | 仅用于命名，建议 kebab-case |
-| `prompt_file` | path | 必须存在且非空，建议 UTF-8 |
+| `prompt_file` | path | 必须存在且非空，建议 `docs/codex/_inputs/*.prompt.md`，UTF-8 |
 | `timeout` | int | 默认 1200，建议区间 600~1800 |
 | `heartbeat` | int | 默认 20，建议 10~30，0 表示关闭心跳；值越大，结束感知延迟越高 |
 | `retries` | int | 默认 1，建议 >=1（支持“连续 2 次网络失败”判定） |
@@ -70,7 +70,7 @@
 
 ## 5. 降级策略
 
-命中以下任一条件时，必须降级人工审查：
+命中以下任一条件时，必须降级为主 AI 助手或人工接管：
 
 1. `failure_type=network_unstable_after_retries`
 2. 连续 2 次出现 `timeout_with_partial_stream_output`
@@ -82,7 +82,7 @@
 
 - 降级触发条件
 - 已保留的 failure 文件路径
-- 人工审查接管范围
+- 接管范围
 
 ---
 
