@@ -1,7 +1,7 @@
 # 搜索规划 Skill
 
 **skill_id**: `search-planning`
-**版本**: 1.0.0
+**版本**: 1.1.0
 **output_dir**: `docs/references/`
 
 ---
@@ -38,6 +38,19 @@
 ### 1.4 关联规范
 
 字段定义、复杂度评级、边界反模式、归档格式：[SPEC.md](./SPEC.md)
+
+### 1.5 Scope 边界
+
+本 skill **只治理"多步调研规划方法论"**——也就是 6 阶段 plan 流程（intent → complexity → sub-queries → search terms → tool mapping → execution）。
+
+**本 skill 不治理**：
+
+- 具体 grok-search MCP 工具（`web_search` / `web_fetch` / `web_map`）的配置、调用细节、信源获取、超时与重试策略
+- `get_config_info` / `switch_model` / `toggle_builtin_tools` 的安全边界
+- 代理隔离、API key 管理、模型选择策略
+- inline citation 解析与 `get_sources` 的调用时机
+
+以上属于 grok-search MCP 完整使用面，由 `skills/grok-search/`（待补，独立任务）单独承接。本 skill 引用 grok-search MCP 的工具名（如 `plan_intent` / `web_search`）只用于"何时调用"和"按什么顺序调用"的方法论决策，不下沉到工具内部细节。
 
 ---
 
@@ -91,13 +104,15 @@
 
 | 现象 | 工具（一般名 / MCP 名） |
 |---|---|
-| 综合性"是什么 / 为什么 / 怎么样" | `web_search` / `mcp5_web_search`（含 grok-search） |
-| 已知 URL 取全文 | `web_fetch` / `mcp5_web_fetch`（Tavily / Firecrawl） |
-| 先发现 URL 拓扑 | `web_map` / `mcp5_web_map`（Tavily Map） |
-| 时效性（"最新" / "今天"） | `web_search`（脚本会自注入当前时间上下文） |
-| Paywall / SPA | 跳过 fetch，让 `web_search` 走 LLM 索引 |
+| 综合性"是什么 / 为什么 / 怎么样" | `web_search`（grok-search MCP）|
+| 已知 URL 取全文 | `web_fetch`（grok-search MCP，Tavily 主路径、Firecrawl 降级）|
+| 先发现 URL 拓扑 | `web_map`（grok-search MCP，Tavily Map）|
+| 时效性（"最新" / "今天"）| `web_search`（grok-search MCP 自注入当前时间上下文）|
+| Paywall / SPA | 跳过 `web_fetch`，让 `web_search` 走 LLM 索引 |
 
-可选：`mcp5_plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution` 一组工具可把 6 阶段产物落到一个 `session_id` 上，跨调用累积同一份计划。
+可选：`plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution` 一组工具（grok-search MCP 提供）可把 6 阶段产物落到一个 `session_id` 上，跨调用累积同一份计划。
+
+> **客户端命名提示**：在 Cursor / Windsurf / Claude Code 等具体客户端中，这些工具可能带客户端 prefix（如 `mcp5_plan_intent`、`mcp5_web_search`）。本 skill 正文统一使用 grok-search MCP 上游工具名（无 prefix）。客户端 prefix 仅在各客户端文档中作为示例出现，不影响本 skill 的方法论描述。
 
 ### 3.5 并行 vs 串行判定
 
@@ -226,11 +241,36 @@ search-planning 本身不替代以上任何 skill，只为它们的"先调研再
 
 ---
 
-## 7. 与上游 Anthropic Skills 的对应关系
+## 7. 与上游事实源的关系
 
-本 skill 是 [`AoManoh/GrokSearch/skills/search-planning/`](https://github.com/AoManoh/GrokSearch/tree/main/skills/search-planning) 中 process-only Claude Skills 的"治理化中文版本"：
+本 skill 治理的是"多步调研规划方法论"，不直接维护工具实现。事实源分两类：
 
-- 上游负责给 Claude 等 LLM 客户端直接挂载、自激活；
-- 本 skill 负责在 project_templates 体系内定义 output_dir、退出门禁、与其他治理 skill 的协作位点。
+### 7.1 实现事实源
 
-工具实现（`mcp5_*` 工具、`grok-web-search` 脚本等）是"可执行体"，本 skill 不与某个具体客户端绑定。两个版本的 6 阶段方法论保持一致，发生差异时以本 skill 的 SKILL.md / SPEC.md 为准。
+grok-search MCP 工具的唯一事实源在 [`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) 仓库的源码中：
+
+- `src/grok_search/server.py`：13 个 MCP 工具的 `@mcp.tool()` 注册和 `Annotated` 字段说明（`web_search` / `get_sources` / `web_fetch` / `web_map` / `get_config_info` / `switch_model` / `toggle_builtin_tools` / `plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution`）
+- `src/grok_search/planning.py`：6 阶段 plan_* 工具的内部状态机与合并策略
+- `src/grok_search/sources.py`：信源缓存与 inline citation 解析
+- `README.md` 的"MCP 工具"章节：工具签名与默认参数对外说明
+
+发生工具语义变化（参数、阶段定义、字段约束）时**以这一组源码为唯一事实源**。本 skill 在引用工具名（如 `plan_intent`）和阶段语义（如"Phase 1 输出 core_question / query_type / time_sensitivity"）时，应保持与源码注解一致。
+
+### 7.2 process-only Anthropic Skill 镜像（可选）
+
+[`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) fork 可能附带一份 process-only Anthropic Skills 包（位置约定为 `skills/search-planning/`），用于让支持 Claude Skills 自激活的客户端直接挂载。该镜像在不同时间点可能存在或缺失。如果存在：
+
+- 它是同一 6 阶段方法论的英文 process-only 形态
+- 它和本 skill 共享设计目标，但**不互为事实源**——双方都以 §7.1 的 Python 源码为最终事实源
+- 当上游镜像与本 skill 的中文表述发生措辞差异时，**方法论描述以本 skill 为准**（治理化中文版），**工具语义以源码为准**
+
+本 skill 不要求 GrokSearch fork 必须维护该镜像；如果该 fork 决定不维护，本 skill 不受影响。
+
+### 7.3 与待补 grok-search skill 的关系
+
+`skills/grok-search/`（待补，作为独立任务推进）将治理 grok-search MCP 完整使用面：配置诊断、搜索调用、信源获取、代理隔离、模型切换、内置 WebSearch/WebFetch 路由控制。它和本 skill 的边界：
+
+- **search-planning（本 skill）**：何时该调研、按什么顺序调研——**决策层**
+- **grok-search（待补）**：grok-search MCP 工具该怎么调、怎么诊断、怎么避坑——**执行层**
+
+二者协作但不重叠：本 skill 的 §3.4 工具映射、§4.5 map_to_tools 决定"用哪个工具"，但工具的具体调用参数、错误处理、信源后处理由 grok-search skill 治理。
