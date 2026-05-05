@@ -32,10 +32,14 @@ const rawAttachApprovalTimeout = Number(process.env.CDP_ATTACH_APPROVAL_TIMEOUT_
 const ATTACH_APPROVAL_TIMEOUT = Number.isFinite(rawAttachApprovalTimeout) && rawAttachApprovalTimeout > 0
   ? rawAttachApprovalTimeout
   : 60000;
-const rawApprovalCooldown = Number(process.env.CDP_APPROVAL_COOLDOWN_MS ?? 120000);
-const APPROVAL_COOLDOWN = Number.isFinite(rawApprovalCooldown) && rawApprovalCooldown > 0
+const DEFAULT_APPROVAL_COOLDOWN = 30000;
+const rawApprovalCooldown = Number(process.env.CDP_APPROVAL_COOLDOWN_MS ?? DEFAULT_APPROVAL_COOLDOWN);
+const APPROVAL_COOLDOWN = Number.isFinite(rawApprovalCooldown) && rawApprovalCooldown >= 0
   ? rawApprovalCooldown
-  : 120000;
+  : DEFAULT_APPROVAL_COOLDOWN;
+const PENDING_GRACE_MS = 1000;
+const BROWSER_PROBE_PENDING_TTL = ENDPOINT_TIMEOUT + PENDING_GRACE_MS;
+const BROWSER_CONNECT_PENDING_TTL = CONNECT_TIMEOUT + TIMEOUT + PENDING_GRACE_MS;
 const DEFAULT_IDLE_TIMEOUT = 0;
 const rawIdleTimeout = Number(process.env.CDP_IDLE_TIMEOUT_MS ?? DEFAULT_IDLE_TIMEOUT);
 const IDLE_TIMEOUT = Number.isFinite(rawIdleTimeout) && rawIdleTimeout >= 0
@@ -46,6 +50,7 @@ const rawDaemonConnectTimeout = Number(process.env.CDP_DAEMON_CONNECT_TIMEOUT_MS
 const DAEMON_CONNECT_TIMEOUT = Number.isFinite(rawDaemonConnectTimeout) && rawDaemonConnectTimeout > 0
   ? rawDaemonConnectTimeout
   : Math.max(80000, CONNECT_TIMEOUT + ATTACH_APPROVAL_TIMEOUT + 5000);
+const TARGET_ATTACH_PENDING_TTL = DAEMON_CONNECT_TIMEOUT + PENDING_GRACE_MS;
 const DAEMON_CONNECT_RETRIES = Math.ceil(DAEMON_CONNECT_TIMEOUT / DAEMON_CONNECT_DELAY);
 const MIN_TARGET_PREFIX_LEN = 8;
 const IS_WINDOWS = process.platform === 'win32';
@@ -185,6 +190,7 @@ function probeWebSocketEndpoint(wsUrl, source) {
       label: approvalLabel,
       source,
       wsUrl,
+      ttlMs: BROWSER_PROBE_PENDING_TTL,
     });
     let settled = false;
     let ws;
@@ -194,6 +200,7 @@ function probeWebSocketEndpoint(wsUrl, source) {
         label: approvalLabel,
         source,
         wsUrl,
+        ttlMs: APPROVAL_COOLDOWN,
       });
       finish(false, new Error(approvalTimeoutMessage(
         approvalScope,
@@ -217,6 +224,7 @@ function probeWebSocketEndpoint(wsUrl, source) {
     try {
       ws = new WebSocket(wsUrl);
     } catch (error) {
+      clearApprovalPending(approvalScope);
       finish(false, new Error(`${source}: invalid WebSocket endpoint: ${error.message}`));
       return;
     }
@@ -229,11 +237,13 @@ function probeWebSocketEndpoint(wsUrl, source) {
       }
     };
     ws.onerror = (event) => {
+      if (settled) return;
       const failed = writeApprovalPending(approvalScope, 'browser-websocket-error', {
         kind: 'browser',
         label: approvalLabel,
         source,
         wsUrl,
+        ttlMs: APPROVAL_COOLDOWN,
       });
       finish(false, new Error(approvalTimeoutMessage(
         approvalScope,
@@ -242,11 +252,13 @@ function probeWebSocketEndpoint(wsUrl, source) {
       )));
     };
     ws.onclose = () => {
+      if (settled) return;
       const failed = writeApprovalPending(approvalScope, 'browser-websocket-closed-before-response', {
         kind: 'browser',
         label: approvalLabel,
         source,
         wsUrl,
+        ttlMs: APPROVAL_COOLDOWN,
       });
       finish(false, new Error(approvalTimeoutMessage(
         approvalScope,
@@ -259,12 +271,16 @@ function probeWebSocketEndpoint(wsUrl, source) {
       try {
         message = JSON.parse(event.data);
       } catch {
+        clearApprovalPending(approvalScope);
         finish(false, new Error(`${source}: WebSocket response is not CDP JSON`));
         return;
       }
       if (message.id !== 1) return;
       if (message.result || message.error) finish(true, message.result || { cdpError: message.error.message || 'CDP error response' });
-      else finish(false, new Error(`${source}: WebSocket response is not a CDP command result`));
+      else {
+        clearApprovalPending(approvalScope);
+        finish(false, new Error(`${source}: WebSocket response is not a CDP command result`));
+      }
     };
   });
 }
@@ -677,23 +693,13 @@ async function endpointFromCandidate(candidate) {
   if (candidate.kind === 'portFile') {
     if (!existsSync(candidate.portFile)) throw new Error(`${candidate.source}: port file not found: ${candidate.portFile}`);
     const portFileData = readDevToolsActivePort(candidate.portFile);
-    try {
-      return await validateHttpEndpoint({
-        host: process.env.CDP_HOST || '127.0.0.1',
-        port: portFileData.port,
-        source: candidate.source,
-        portFile: candidate.portFile,
-      });
-    } catch (httpDiscoveryError) {
-      const wsUrl = wsUrlFromPortFileData(portFileData);
-      return {
-        ...endpointFromDirectWsUrl(wsUrl, candidate.source),
-        host: process.env.CDP_HOST || '127.0.0.1',
-        port: portFileData.port,
-        portFile: candidate.portFile,
-        httpDiscoveryError,
-      };
-    }
+    const wsUrl = wsUrlFromPortFileData(portFileData);
+    return {
+      ...endpointFromDirectWsUrl(wsUrl, `${candidate.source} direct WebSocket`),
+      host: process.env.CDP_HOST || '127.0.0.1',
+      port: portFileData.port,
+      portFile: candidate.portFile,
+    };
   }
   if (candidate.kind === 'port') {
     try {
@@ -719,29 +725,17 @@ async function endpointDiagnosticsFromCandidate(candidate) {
   if (candidate.kind === 'portFile') {
     if (!existsSync(candidate.portFile)) throw new Error(`${candidate.source}: port file not found: ${candidate.portFile}`);
     const portFileData = readDevToolsActivePort(candidate.portFile);
-    const errors = [];
-    try {
-      return await validateHttpEndpoint({
-        host: process.env.CDP_HOST || '127.0.0.1',
-        port: portFileData.port,
-        source: candidate.source,
-        portFile: candidate.portFile,
-      });
-    } catch (error) {
-      errors.push(`/json/version failed: ${error.message}`);
-    }
     try {
       const wsUrl = wsUrlFromPortFileData(portFileData);
       return await validateWebSocketEndpoint(wsUrl, {
         host: process.env.CDP_HOST || '127.0.0.1',
         port: portFileData.port,
-        source: candidate.source,
+        source: `${candidate.source} direct WebSocket`,
         portFile: candidate.portFile,
       });
     } catch (error) {
-      errors.push(`direct WebSocket failed: ${error.message}`);
+      throw new Error(`direct WebSocket failed: ${error.message}`);
     }
-    throw new Error(errors.join('; '));
   }
   if (candidate.kind === 'port') {
     const errors = [];
@@ -894,8 +888,8 @@ async function resolveBrowserEndpoint({ probeDirectWs = false } = {}) {
   throw new Error(
     'No reusable Chrome DevTools endpoint was validated. This does not mean Chrome is not open. ' +
     'A port that returns empty 404 from /json/version is only a failed HTTP discovery endpoint; ' +
-    'use launch-isolated-chrome.sh, set CDP_PORT_FILE to the intended DevToolsActivePort, or set ' +
-    'CDP_WS_URL to a known browser WebSocket URL.' +
+    'for shared-session, set CDP_PORT_FILE to the intended DevToolsActivePort or set CDP_WS_URL ' +
+    'to a known browser WebSocket URL. Do not launch a new isolated/headless browser unless the user explicitly asked for one.' +
     invalidHint
   );
 }
@@ -913,16 +907,25 @@ async function doctorReport() {
   ];
 
   let discovery = null;
+  let selectedEndpoint = null;
+  const explicitBinding = hasExplicitEndpointBinding();
   try {
     let selected;
-    if (hasExplicitEndpointBinding()) {
+    if (explicitBinding) {
       selected = await resolveBrowserEndpoint({ probeDirectWs: true });
     } else {
-      discovery = await discoverAutoEndpoints({ probeDirectWs: true });
-      if (discovery.valid.length === 1) selected = discovery.valid[0];
+      discovery = await discoverAutoEndpoints({ probeDirectWs: false });
+      if (discovery.valid.length === 1) {
+        const candidate = discovery.valid[0];
+        selected = await validateWebSocketEndpoint(candidate.wsUrl, {
+          ...candidate,
+          source: `${candidate.source} explicit single-candidate validation`,
+        });
+      }
       else if (discovery.valid.length > 1) {
         throw new Error(
-          `Multiple valid Chrome DevTools endpoints found. Set CDP_PORT_FILE or CDP_WS_URL explicitly.\n` +
+          `Multiple Chrome DevTools endpoint candidates found. Set CDP_PORT_FILE or CDP_WS_URL explicitly before WebSocket probing.\n` +
+          'No browser WebSocket handshake was sent because probing multiple candidates could attach to the wrong browser.\n' +
           discovery.valid.slice(0, 8).map(formatEndpoint).join('\n')
         );
       } else {
@@ -932,12 +935,13 @@ async function doctorReport() {
         throw new Error(
           'No reusable Chrome DevTools endpoint was validated. This does not mean Chrome is not open. ' +
           'A port that returns empty 404 from /json/version is only a failed HTTP discovery endpoint; ' +
-          'use launch-isolated-chrome.sh, set CDP_PORT_FILE to the intended DevToolsActivePort, or set ' +
-          'CDP_WS_URL to a known browser WebSocket URL.' +
+          'for shared-session, set CDP_PORT_FILE to the intended DevToolsActivePort or set CDP_WS_URL ' +
+          'to a known browser WebSocket URL. Do not launch a new isolated/headless browser unless the user explicitly asked for one.' +
           invalidHint
         );
       }
     }
+    selectedEndpoint = selected;
     lines.push('Selected endpoint:');
     lines.push(formatEndpoint(selected));
   } catch (error) {
@@ -945,19 +949,27 @@ async function doctorReport() {
     lines.push(`Reason: ${error.message}`);
   }
 
-  const { valid, invalid, candidates } = discovery || await discoverAutoEndpoints({ probeDirectWs: true });
   lines.push('');
-  lines.push(`Auto-discovery candidates: ${candidates.length}`);
-  if (valid.length) {
-    lines.push('Valid endpoints:');
-    lines.push(valid.map(formatEndpoint).join('\n'));
-  }
-  if (invalid.length) {
-    lines.push('Rejected candidates:');
-    lines.push(invalid.slice(0, 12).map(formatInvalidEndpoint).join('\n'));
-  }
-  if (!valid.length && !invalid.length) {
-    lines.push('No DevToolsActivePort files or running Chrome processes with --remote-debugging-port were found.');
+  let valid = selectedEndpoint ? [selectedEndpoint] : [];
+  if (explicitBinding) {
+    lines.push('Auto-discovery candidates: skipped because an explicit endpoint binding is set.');
+  } else {
+    const autoDiscovery = discovery || await discoverAutoEndpoints({ probeDirectWs: false });
+    const invalid = autoDiscovery.invalid;
+    const candidates = autoDiscovery.candidates;
+    valid = autoDiscovery.valid;
+    lines.push(`Auto-discovery candidates: ${candidates.length}`);
+    if (valid.length) {
+      lines.push(explicitBinding || selectedEndpoint ? 'Valid endpoints:' : 'Endpoint candidates (not WebSocket-probed when ambiguous):');
+      lines.push(valid.map(formatEndpoint).join('\n'));
+    }
+    if (invalid.length) {
+      lines.push('Rejected candidates:');
+      lines.push(invalid.slice(0, 12).map(formatInvalidEndpoint).join('\n'));
+    }
+    if (!valid.length && !invalid.length) {
+      lines.push('No DevToolsActivePort files or running Chrome processes with --remote-debugging-port were found.');
+    }
   }
 
   const browserProcesses = getBrowserProcessSummaries();
@@ -1013,6 +1025,12 @@ function currentCacheMeta(endpoint = null) {
     port: process.env.CDP_PORT || '',
     host: process.env.CDP_HOST || '127.0.0.1',
     endpointSource: endpoint?.source || '',
+    selectedWsUrl: endpoint?.wsUrl || '',
+    selectedHost: endpoint?.host || '',
+    selectedPort: endpoint?.port || '',
+    selectedPortFile: endpoint?.portFile || '',
+    browser: endpoint?.browser || '',
+    protocolVersion: endpoint?.protocolVersion || '',
   };
 }
 
@@ -1057,20 +1075,43 @@ function requirePagesCacheForCurrentBinding() {
   return pages;
 }
 
+function cachedEndpointForCurrentBinding() {
+  if (!existsSync(PAGES_CACHE)) return null;
+  const { meta } = readPagesCache();
+  if (!cacheMatchesCurrentBinding(meta) || !meta?.selectedWsUrl) return null;
+  const endpoint = endpointFromDirectWsUrl(meta.selectedWsUrl, meta.endpointSource || 'pages cache selected endpoint');
+  return {
+    ...endpoint,
+    host: meta.selectedHost || endpoint.host,
+    port: meta.selectedPort || endpoint.port,
+    portFile: meta.selectedPortFile || meta.portFile || '',
+    browser: meta.browser || endpoint.browser,
+    protocolVersion: meta.protocolVersion || endpoint.protocolVersion,
+  };
+}
+
+async function resolveBrowserEndpointForDaemon() {
+  return cachedEndpointForCurrentBinding() || await resolveBrowserEndpoint();
+}
+
 function clearApprovalPending(targetId) {
   try { unlinkSync(approvalPendingPath(targetId)); } catch {}
 }
 
 function writeApprovalPending(scope, phase, details = {}) {
   const now = Date.now();
+  const rawTtlMs = Number(details.ttlMs ?? APPROVAL_COOLDOWN);
+  const ttlMs = Number.isFinite(rawTtlMs) && rawTtlMs >= 0 ? rawTtlMs : APPROVAL_COOLDOWN;
+  const { ttlMs: _ttlMs, ...rest } = details;
   const payload = {
     scope,
     phase,
     createdAt: now,
-    expiresAt: now + APPROVAL_COOLDOWN,
+    expiresAt: now + ttlMs,
     daemonConnectTimeoutMs: DAEMON_CONNECT_TIMEOUT,
     attachApprovalTimeoutMs: ATTACH_APPROVAL_TIMEOUT,
-    ...details,
+    approvalCooldownMs: APPROVAL_COOLDOWN,
+    ...rest,
   };
   writeFileSync(approvalPendingPath(scope), JSON.stringify(payload, null, 2), { mode: 0o600 });
   return payload;
@@ -1096,19 +1137,65 @@ function readApprovalPending(scope) {
   return parseApprovalPendingFile(approvalPendingPath(scope));
 }
 
-function readAnyApprovalPending() {
+function listApprovalPending() {
   let entries = [];
   try {
     entries = readdirSync(RUNTIME_DIR, { withFileTypes: true });
   } catch {
-    return null;
+    return [];
   }
-  const pending = entries
+  return entries
     .filter(entry => entry.isFile() && entry.name.startsWith('approval-pending-') && entry.name.endsWith('.json'))
-    .map(entry => parseApprovalPendingFile(resolve(RUNTIME_DIR, entry.name)))
+    .map(entry => {
+      const filePath = resolve(RUNTIME_DIR, entry.name);
+      const pending = parseApprovalPendingFile(filePath);
+      return pending ? { ...pending, file: filePath } : null;
+    })
     .filter(Boolean)
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  return pending[0] || null;
+}
+
+function clearAllApprovalPending() {
+  for (const pending of listApprovalPending()) {
+    try { unlinkSync(pending.file || approvalPendingPath(pending.scope)); } catch {}
+  }
+}
+
+function formatApprovalPending(pending) {
+  const seconds = Math.max(0, Math.ceil(((pending.expiresAt || Date.now()) - Date.now()) / 1000));
+  const label = pending.label || pending.scope || 'Chrome debugging request';
+  return `- ${label}\n  scope=${pending.scope} phase=${pending.phase || '(unknown)'} expiresIn=${seconds}s`;
+}
+
+function statusReport() {
+  const lines = [
+    'CDP runtime status',
+    `Runtime dir: ${RUNTIME_DIR}`,
+    `Instance: ${INSTANCE_NAME || '(default)'}`,
+    `Pages cache: ${existsSync(PAGES_CACHE) ? PAGES_CACHE : '(none)'}`,
+    `CDP_PORT_FILE: ${process.env.CDP_PORT_FILE || '(unset)'}`,
+    `CDP_WS_URL: ${process.env.CDP_WS_URL || process.env.CDP_BROWSER_WS_URL || '(unset)'}`,
+    `CDP_PORT: ${process.env.CDP_PORT || '(unset)'}`,
+    '',
+  ];
+
+  try {
+    const { meta, pages } = readPagesCache();
+    if (pages.length) {
+      lines.push(`Cached targets: ${pages.length}`);
+      lines.push(`Cache binding: ${meta?.selectedWsUrl || meta?.wsUrl || meta?.portFile || meta?.port || '(legacy/unbound)'}`);
+    } else {
+      lines.push('Cached targets: 0');
+    }
+  } catch (error) {
+    lines.push(`Pages cache: unreadable (${error.message})`);
+  }
+
+  const pending = listApprovalPending();
+  lines.push('');
+  lines.push(`Pending approval records: ${pending.length}`);
+  if (pending.length) lines.push(pending.map(formatApprovalPending).join('\n'));
+  return lines.join('\n');
 }
 
 function approvalPendingMessage(scope, pending) {
@@ -1118,7 +1205,8 @@ function approvalPendingMessage(scope, pending) {
     `Chrome debugging approval may already be pending for ${label}. ` +
     'Focus the existing Chrome window and approve or deny the prompt if it is visible. ' +
     `Refusing to send another handshake request for ${seconds}s to avoid repeated authorization prompts. ` +
-    'Stopping now. Run the command again only after handling the Chrome prompt, or run "stop" if the session should be cleared.'
+    'Stopping now. Run the command again only after handling the Chrome prompt. Use "status" to inspect pending records, ' +
+    '"clear-pending" only for stale records, or "stop" if the session should be cleared.'
   );
 }
 
@@ -1138,15 +1226,25 @@ function approvalTimeoutMessage(scope, pending, reason) {
 
 class CDP {
   #ws; #id = 0; #pending = new Map(); #eventHandlers = new Map(); #closeHandlers = [];
+  #approvalScope = ''; #handshakeConfirmed = false;
+
+  #confirmHandshake() {
+    if (!this.#approvalScope || this.#handshakeConfirmed) return;
+    this.#handshakeConfirmed = true;
+    clearApprovalPending(this.#approvalScope);
+  }
 
   async connect(wsUrl, approvalLabel = browserApprovalLabel(wsUrl)) {
     const approvalScope = browserApprovalScope(wsUrl);
     const existingPending = readApprovalPending(approvalScope);
     if (existingPending) throw new Error(approvalPendingMessage(approvalScope, existingPending));
+    this.#approvalScope = approvalScope;
+    this.#handshakeConfirmed = false;
     writeApprovalPending(approvalScope, 'browser-websocket-connect-sent', {
       kind: 'browser',
       label: approvalLabel,
       wsUrl,
+      ttlMs: BROWSER_CONNECT_PENDING_TTL,
     });
     return new Promise((res, rej) => {
       let settled = false;
@@ -1155,6 +1253,7 @@ class CDP {
           kind: 'browser',
           label: approvalLabel,
           wsUrl,
+          ttlMs: APPROVAL_COOLDOWN,
         });
         rej(new Error(approvalTimeoutMessage(approvalScope, timedOut, reason)));
       };
@@ -1169,7 +1268,6 @@ class CDP {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        clearApprovalPending(approvalScope);
         res();
       };
       this.#ws.onerror = (e) => {
@@ -1192,6 +1290,7 @@ class CDP {
         if (msg.id && this.#pending.has(msg.id)) {
           const { resolve, reject } = this.#pending.get(msg.id);
           this.#pending.delete(msg.id);
+          this.#confirmHandshake();
           if (msg.error) reject(new Error(msg.error.message));
           else resolve(msg.result);
         } else if (msg.method && this.#eventHandlers.has(msg.method)) {
@@ -1213,6 +1312,13 @@ class CDP {
       setTimeout(() => {
         if (this.#pending.has(id)) {
           this.#pending.delete(id);
+          if (this.#approvalScope && !this.#handshakeConfirmed) {
+            writeApprovalPending(this.#approvalScope, 'timed-out-waiting-for-cdp-response', {
+              kind: 'browser',
+              label: browserApprovalLabel(this.#approvalScope.replace(/^browser-/, '')),
+              ttlMs: APPROVAL_COOLDOWN,
+            });
+          }
           reject(new Error(`Timeout: ${method}`));
         }
       }, timeoutMs);
@@ -1276,8 +1382,9 @@ function formatPageList(pages) {
   const prefixLen = getDisplayPrefixLength(pages.map(p => p.targetId));
   return pages.map(p => {
     const id = p.targetId.slice(0, prefixLen).padEnd(prefixLen);
+    const context = p.browserContextId ? `ctx=${p.browserContextId.slice(0, 8)}` : 'ctx=default ';
     const title = p.title.substring(0, 54).padEnd(54);
-    return `${id}  ${title}  ${p.url}`;
+    return `${id}  ${context}  ${title}  ${p.url}`;
   }).join('\n');
 }
 
@@ -1298,12 +1405,13 @@ async function getWindowRows(cdp) {
 function formatWindowList(rows) {
   return rows.map(({ page, windowInfo, prefixLen }) => {
     const id = page.targetId.slice(0, prefixLen).padEnd(prefixLen);
+    const context = page.browserContextId ? `ctx=${page.browserContextId.slice(0, 8)}` : 'ctx=default ';
     const windowId = String(windowInfo.windowId ?? 'n/a').padStart(4);
     const bounds = windowInfo.bounds || {};
     const state = String(bounds.windowState || '').padEnd(10);
     const size = bounds.width && bounds.height ? `${bounds.width}x${bounds.height}` : 'n/a';
     const title = page.title.substring(0, 42).padEnd(42);
-    return `win=${windowId}  ${id}  ${state}  ${String(size).padEnd(11)}  ${title}  ${page.url}`;
+    return `win=${windowId}  ${id}  ${context}  ${state}  ${String(size).padEnd(11)}  ${title}  ${page.url}`;
   }).join('\n');
 }
 
@@ -1314,6 +1422,26 @@ async function refreshPagesCache(cdp, endpoint, targetId, url) {
   }
   writePagesCache(pages, endpoint);
   return pages;
+}
+
+async function openTargetStr(cdp, endpoint, cmd, url = 'about:blank') {
+  let browserContextId;
+  if (cmd === 'incognito') {
+    const context = await cdp.send('Target.createBrowserContext', { disposeOnDetach: false });
+    browserContextId = context.browserContextId;
+  }
+  const createParams = { url };
+  if (cmd === 'openwindow' || cmd === 'incognito') createParams.newWindow = true;
+  if (browserContextId) createParams.browserContextId = browserContextId;
+  const { targetId } = await cdp.send('Target.createTarget', createParams);
+  await refreshPagesCache(cdp, endpoint, targetId, url);
+  const label = cmd === 'open'
+    ? 'new tab'
+    : cmd === 'openwindow'
+      ? 'new window'
+      : `new incognito window (context ${browserContextId})`;
+  return `Opened ${label}: ${targetId.slice(0, 8)}  ${url}\n` +
+    'Note: this new target may need first-time approval in shared-session mode.';
 }
 
 function shouldShowAxNode(node, compact = false) {
@@ -1583,8 +1711,9 @@ async function runDaemon(targetId) {
   const sp = sockPath(targetId);
 
   const cdp = new CDP();
+  let endpoint;
   try {
-    const endpoint = await resolveBrowserEndpoint();
+    endpoint = await resolveBrowserEndpointForDaemon();
     await cdp.connect(endpoint.wsUrl);
   } catch (e) {
     process.stderr.write(`Daemon: cannot connect to Chrome: ${e.message}\n`);
@@ -1643,12 +1772,24 @@ async function runDaemon(targetId) {
       switch (cmd) {
         case 'list': {
           const pages = await getPages(cdp);
+          writePagesCache(pages, endpoint);
           result = formatPageList(pages);
           break;
         }
         case 'list_raw': {
           const pages = await getPages(cdp);
+          writePagesCache(pages, endpoint);
           result = JSON.stringify(pages);
+          break;
+        }
+        case 'windows': case 'wins': {
+          const rows = await getWindowRows(cdp);
+          writePagesCache(rows.map(row => row.page), endpoint);
+          result = formatWindowList(rows);
+          break;
+        }
+        case 'open': case 'openwindow': case 'incognito': {
+          result = await openTargetStr(cdp, endpoint, cmd, args[0]);
           break;
         }
         case 'attach': {
@@ -1751,6 +1892,7 @@ async function getOrStartTabDaemon(targetId) {
   writeApprovalPending(targetId, 'target-handshake-sent', {
     kind: 'target',
     label: `target ${targetId.slice(0, MIN_TARGET_PREFIX_LEN)}`,
+    ttlMs: TARGET_ATTACH_PENDING_TTL,
   });
 
   // Wait for socket (includes time for user to click Allow)
@@ -1765,6 +1907,7 @@ async function getOrStartTabDaemon(targetId) {
   const timedOut = writeApprovalPending(targetId, 'timed-out-waiting-for-target-approval', {
     kind: 'target',
     label: `target ${targetId.slice(0, MIN_TARGET_PREFIX_LEN)}`,
+    ttlMs: APPROVAL_COOLDOWN,
   });
   throw new Error(
     'Daemon failed to start after sending a Chrome debugging handshake request. ' +
@@ -1827,12 +1970,35 @@ function sendCommand(conn, req) {
   });
 }
 
+async function sendCommandThroughExistingDaemon(cmd, args = []) {
+  if (!existsSync(PAGES_CACHE)) return null;
+  let pages;
+  try {
+    const cached = readPagesCache();
+    if (!cacheMatchesCurrentBinding(cached.meta)) return null;
+    pages = cached.pages;
+  } catch {
+    return null;
+  }
+  for (const page of pages) {
+    try {
+      const conn = await connectToSocket(sockPath(page.targetId));
+      return await sendCommand(conn, { cmd, args });
+    } catch {}
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Stop daemons
 // ---------------------------------------------------------------------------
 
 async function stopDaemons(targetPrefix) {
-  if (!existsSync(PAGES_CACHE)) return;
+  if (!existsSync(PAGES_CACHE)) {
+    if (!targetPrefix) clearAllApprovalPending();
+    else clearApprovalPending(targetPrefix);
+    return;
+  }
   const { pages } = readPagesCache();
   const targets = targetPrefix
     ? [resolvePrefix(targetPrefix, pages.map(p => p.targetId), 'target')]
@@ -1848,6 +2014,7 @@ async function stopDaemons(targetPrefix) {
       if (!IS_WINDOWS) try { unlinkSync(sp); } catch {}
     }
   }
+  if (!targetPrefix) clearAllApprovalPending();
 }
 
 // ---------------------------------------------------------------------------
@@ -1858,9 +2025,11 @@ const USAGE = `cdp - lightweight Chrome DevTools Protocol CLI (no Puppeteer)
 
 Usage: cdp <command> [args]
 
+  status                            Show runtime cache and pending approval records without handshaking
   list                              List open pages (shows unique target prefixes)
   windows                           List page targets with Chrome window ids/bounds
   doctor                            Show endpoint discovery and validation diagnostics
+                                    With multiple candidates, it lists them and stops before WebSocket probing
   attach <target>                   Attach once and keep this target's daemon/session alive
   snap  <target>                    Accessibility tree snapshot
   eval  <target> <expr>             Evaluate JS expression
@@ -1881,6 +2050,7 @@ Usage: cdp <command> [args]
   openwindow [url]                  Open a new normal browser window
   incognito [url]                   Open a new incognito BrowserContext window
   stop  [target]                    Stop daemon(s)
+  clear-pending [scope|all]         Clear pending approval record(s) without handshaking
 
 <target> is a unique targetId prefix from "cdp list". If a prefix is ambiguous,
 use more characters.
@@ -1888,10 +2058,28 @@ use more characters.
 ENDPOINT BINDING
   Discovery accepts only real Chrome DevTools endpoints. A process listening on
   9222 is not enough. It is accepted only when /json/version returns a
-  webSocketDebuggerUrl, or when DevToolsActivePort/CDP_WS_URL gives a direct
-  WebSocket endpoint that answers CDP. For stable shared-session use, bind explicitly:
+  webSocketDebuggerUrl. DevToolsActivePort/CDP_WS_URL never use HTTP discovery
+  first; their browser WebSocket is used directly and must answer CDP. For
+  stable shared-session use, bind explicitly:
     CDP_PORT_FILE=/path/to/DevToolsActivePort node skills/chrome-cdp/scripts/cdp.mjs list
     CDP_WS_URL=ws://127.0.0.1:<port>/devtools/browser/<id> node skills/chrome-cdp/scripts/cdp.mjs list
+
+DEFAULT LOCAL-BROWSER RULE
+  When the user asks to handshake/connect/inspect the local browser, the default
+  path is shared-session: find and bind an already-open, headed browser endpoint.
+  Do not launch a new isolated/headless browser unless the user explicitly asks
+  for a new dedicated instance, such as "create a local incognito browser".
+  If no endpoint is validated, report that state and ask for/bind CDP_PORT_FILE
+  or CDP_WS_URL; do not substitute a new browser as fallback.
+
+PRECISE TARGET SELECTION
+  Browser endpoint selection and page target selection are separate. When several
+  endpoints exist, bind one explicitly before list/windows. When several windows
+  or contexts exist inside that endpoint, use windows/list and choose by targetId,
+  windowId, ctx, title, URL, and bounds. ctx=default is normal profile context;
+  a non-default ctx usually indicates a separate browser context such as an
+  incognito context created by CDP. If more than one candidate matches, stop and
+  ask the user to identify the exact target; do not guess.
 
 INSTANCE ISOLATION
   Set CDP_INSTANCE_NAME to isolate pages cache and daemon sockets per browser
@@ -1926,6 +2114,9 @@ DAEMON IPC (for advanced use / scripting)
   Commands mirror the CLI: attach, snap, eval, shot, html, nav, net, click, clickxy,
   type, loadall, evalraw, stop. Browser-level commands include list, windows,
   open, openwindow, incognito. Use evalraw to send arbitrary page-session CDP methods.
+  Top-level list/windows/open/openwindow/incognito reuse an existing target daemon
+  when one is active for the current binding; they reconnect to the browser only
+  when no daemon socket exists.
   ${IDLE_TIMEOUT === 0
     ? 'The socket persists until the tab closes or you run stop.'
     : `The socket disappears after ${Math.round(IDLE_TIMEOUT / 60000)} min of inactivity, when the tab closes, or when you run stop.`}
@@ -1935,8 +2126,10 @@ APPROVAL WAITING
   target attach may trigger Chrome's debugging approval UI. Run them
   sequentially, never in parallel. After a handshake request is sent, this CLI
   waits for user approval instead of sending more handshakes. If waiting times
-  out, focus Chrome and handle the prompt; repeated CDP commands are suppressed
-  for CDP_APPROVAL_COOLDOWN_MS, except help and stop.
+  out, focus Chrome and handle the prompt; repeated handshakes for that same
+  browser endpoint or target are suppressed for CDP_APPROVAL_COOLDOWN_MS.
+  Other scopes are not globally blocked. Use status to inspect pending records
+  and clear-pending only when the prompt was handled or the record is known stale.
     CDP_ATTACH_APPROVAL_TIMEOUT_MS=${ATTACH_APPROVAL_TIMEOUT}
     CDP_DAEMON_CONNECT_TIMEOUT_MS=${DAEMON_CONNECT_TIMEOUT}
     CDP_APPROVAL_COOLDOWN_MS=${APPROVAL_COOLDOWN}
@@ -1961,20 +2154,32 @@ async function main() {
     console.log(USAGE); process.exit(0);
   }
 
-  if (cmd !== 'stop') {
-    const pending = readAnyApprovalPending();
-    if (pending) {
-      console.error(approvalPendingMessage(pending.scope, pending));
-      process.exit(1);
-    }
-  }
-
   if (cmd === 'doctor') {
     console.log(await doctorReport());
     return;
   }
 
+  if (cmd === 'status') {
+    console.log(statusReport());
+    return;
+  }
+
+  if (cmd === 'clear-pending') {
+    const scope = args[0] || 'all';
+    if (scope === 'all') clearAllApprovalPending();
+    else clearApprovalPending(scope);
+    return;
+  }
+
   if (cmd === 'list' || cmd === 'ls') {
+    const daemonResponse = await sendCommandThroughExistingDaemon('list');
+    if (daemonResponse) {
+      if (daemonResponse.ok) {
+        if (daemonResponse.result) console.log(daemonResponse.result);
+        return;
+      }
+      throw new Error(`Existing target daemon rejected list: ${daemonResponse.error}`);
+    }
     const cdp = new CDP();
     const endpoint = await resolveBrowserEndpoint();
     await cdp.connect(endpoint.wsUrl);
@@ -1987,6 +2192,14 @@ async function main() {
   }
 
   if (cmd === 'windows' || cmd === 'wins') {
+    const daemonResponse = await sendCommandThroughExistingDaemon('windows');
+    if (daemonResponse) {
+      if (daemonResponse.ok) {
+        if (daemonResponse.result) console.log(daemonResponse.result);
+        return;
+      }
+      throw new Error(`Existing target daemon rejected windows: ${daemonResponse.error}`);
+    }
     const cdp = new CDP();
     const endpoint = await resolveBrowserEndpoint();
     await cdp.connect(endpoint.wsUrl);
@@ -2001,27 +2214,20 @@ async function main() {
   // Open new tab/window/context
   if (cmd === 'open' || cmd === 'openwindow' || cmd === 'incognito') {
     const url = args[0] || 'about:blank';
+    const daemonResponse = await sendCommandThroughExistingDaemon(cmd, [url]);
+    if (daemonResponse) {
+      if (daemonResponse.ok) {
+        if (daemonResponse.result) console.log(daemonResponse.result);
+        return;
+      }
+      throw new Error(`Existing target daemon rejected ${cmd}: ${daemonResponse.error}`);
+    }
     const cdp = new CDP();
     const endpoint = await resolveBrowserEndpoint();
     await cdp.connect(endpoint.wsUrl);
-    let browserContextId;
-    if (cmd === 'incognito') {
-      const context = await cdp.send('Target.createBrowserContext', { disposeOnDetach: false });
-      browserContextId = context.browserContextId;
-    }
-    const createParams = { url };
-    if (cmd === 'openwindow' || cmd === 'incognito') createParams.newWindow = true;
-    if (browserContextId) createParams.browserContextId = browserContextId;
-    const { targetId } = await cdp.send('Target.createTarget', createParams);
-    await refreshPagesCache(cdp, endpoint, targetId, url);
+    const result = await openTargetStr(cdp, endpoint, cmd, url);
     cdp.close();
-    const label = cmd === 'open'
-      ? 'new tab'
-      : cmd === 'openwindow'
-        ? 'new window'
-        : `new incognito window (context ${browserContextId})`;
-    console.log(`Opened ${label}: ${targetId.slice(0, 8)}  ${url}`);
-    console.log('Note: this new target may need first-time approval in shared-session mode.');
+    console.log(result);
     return;
   }
 
