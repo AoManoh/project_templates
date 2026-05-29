@@ -47,6 +47,7 @@
 每个 Skill 都负责一个明确的工作场景，例如：
 
 - `requirements-governance`：需求对齐与讨论收敛
+- `search-planning`：多步调研规划与外部证据归档
 - `development-governance`：开发 task 闭环、验证、文档同步
 - `refactor-governance`：迁移、替换实现、兼容层清理
 - `systematic-debugging`：问题复现、定位、修复、验证
@@ -105,6 +106,7 @@ project_templates/
 ├── README.md
 ├── skills/
 │   ├── requirements-governance/
+│   ├── search-planning/
 │   ├── development-governance/
 │   ├── refactor-governance/
 │   ├── systematic-debugging/
