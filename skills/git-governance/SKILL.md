@@ -1,7 +1,7 @@
 # Git 协作治理 Skill
 
 **skill_id**: `git-governance`
-**版本**: 1.0.0
+**版本**: 1.1.0
 **output_dir**: `docs/work-logs/`
 
 ---

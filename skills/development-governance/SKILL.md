@@ -1,7 +1,7 @@
 # 开发治理 Skill
 
 **skill_id**: `development-governance`
-**版本**: 1.0.0
+**版本**: 1.1.0
 **output_dir**: `docs/development/`
 
 ---
