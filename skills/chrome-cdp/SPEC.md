@@ -1,5 +1,10 @@
 # Chrome CDP Skill 规范
 
+**版本**: 1.0.0
+**适用范围**: 本地 Chrome remote debugging 的连接模式、授权边界、实例绑定、失败恢复与稳定复用
+
+---
+
 ## 1. 目标
 
 本规范约束本地 Chrome remote debugging 的连接模式、授权边界、实例绑定、失败恢复和稳定复用策略。

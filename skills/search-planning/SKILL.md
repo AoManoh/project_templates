@@ -1,7 +1,7 @@
 # 搜索规划 Skill
 
 **skill_id**: `search-planning`
-**版本**: 1.1.0
+**版本**: 1.1.1
 **output_dir**: `docs/references/`
 
 ---
@@ -51,6 +51,8 @@
 - inline citation 解析与 `get_sources` 的调用时机
 
 以上属于 grok-search MCP 完整使用面，由 `skills/grok-search/`（待补，独立任务）单独承接。本 skill 引用 grok-search MCP 的工具名（如 `plan_intent` / `web_search`）只用于"何时调用"和"按什么顺序调用"的方法论决策，不下沉到工具内部细节。
+
+> 模板实例化说明：本 skill 的 6 阶段方法论与项目无关，可直接复用；其中 `grok-search` MCP 工具名、`skills/grok-search/` 以及 GrokSearch 仓库引用属于来源项目的示例绑定，实例化到非 GrokSearch 项目时，应改为该项目实际使用的搜索 / 抓取工具。
 
 ---
 
