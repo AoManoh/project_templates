@@ -1,7 +1,37 @@
-# Local environment and secrets
+# Local environment and secrets.
+# .env files commonly contain DB URLs, API keys, OAuth secrets.
+# .env.example documents variable names without values and IS safe to commit.
 .env
 .env.*
 !.env.example
+.envrc
+
+# Credentials, keys, certificates and tokens.
+# These should NEVER be committed even to private repositories; rotate
+# immediately if any of them appear in `git status` unexpectedly.
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+*.kdbx
+*.gpg
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.ppk
+*credentials*.json
+*credentials*.yml
+*credentials*.yaml
+*secret*.json
+*secret*.yml
+*secret*.yaml
+*.token
+auth.json
+.netrc
+secrets/
 
 # Dependency and build outputs
 node_modules/
@@ -11,6 +41,18 @@ coverage/
 .cache/
 .turbo/
 
+# Cross-language test caches and coverage artifacts.
+# Project-specific test directories (tests/, __tests__/, spec/) are governed
+# via AGENTS.md "Test governance grading" instead of blanket-ignored here.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nyc_output/
+htmlcov/
+.coverage
+.coverage.*
+
 # Runtime logs
 *.log
 npm-debug.log*
@@ -18,14 +60,49 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# OS-level junk files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor / IDE local state.
+# Shared editor configs (.vscode/settings.json, .vscode/extensions.json,
+# .vscode/launch.json, .editorconfig) should be opted IN per project via `!`
+# rules, not by removing this default.
+.idea/
+.cursor/
+.vscode/
+*.swp
+*.swo
+*~
+.#*
+
+# AI coding tool local caches (not configuration).
+# Keep AGENTS.md, .cursorrules, .clinerules, .windsurfrules, .codeiumignore at
+# repo root if you choose to use them.
+# Note: .cursor/ as a whole is already ignored above under "Editor / IDE local
+# state"; that rule covers .cursor/cache/ as well, so no separate entry needed.
+.claude/cache/
+.codeium/
+.aider*
+.history/
+
 # Root-level local helper scripts are private by default.
 # Reusable public automation should live under the owning skill directory.
+# Projects that legitimately ship public build / deploy scripts should add
+# project-level `!/scripts/**` exceptions in their own .gitignore.
 /scripts/
 
 # Private governance outputs.
 # Keep docs/ as a public template skeleton, but do not publish local reports,
 # work logs, references, PRDs, debug notes, or review artifacts by default.
 # To intentionally publish a docs artifact, add an explicit ! exception below.
+# private-internal repositories may relax this in project-level .gitignore.
 /docs/**
 !/docs/
 !/docs/**/
