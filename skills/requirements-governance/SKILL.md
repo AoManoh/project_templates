@@ -1,7 +1,7 @@
 # 需求治理 Skill
 
 **skill_id**: `requirements-governance`
-**版本**: 1.1.0
+**版本**: 1.2.0
 **output_dir**: `docs/requirements/`
 
 ---
