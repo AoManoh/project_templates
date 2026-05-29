@@ -5,6 +5,10 @@ description: Stable local Chrome remote-debugging skill over raw Node.js WebSock
 
 # Chrome CDP
 
+**skill_id**: `chrome-cdp`
+**版本**: 1.0.0
+**output_dir**: `N/A` (runtime artifacts like screenshots/HTML/network logs go to caller-specified paths, not a governance docs dir)
+
 Raw Chrome DevTools Protocol CLI. Connect directly over Node.js WebSocket, keep per-tab sessions alive, and control local Chromium browsers without Puppeteer or Playwright.
 
 ## Single Source Of Truth
