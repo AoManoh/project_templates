@@ -244,7 +244,7 @@ Skill 调度采用"主治理 Skill + 行为型 Overlay Skill"模型：
 - 不能用"这是小问题"作为跳过 Skill 的默认理由；若明显相关的 Skill 未被采用，必须能说明它为什么不适用。
 - 如果平台内置 Skill 工具、用户目录、缓存目录或项目外旧版 Skill 与当前项目根 `skills/` 下同名文件冲突，以当前项目根下的本地 `skills/*/SKILL.md` 与 `SPEC.md` 为权威来源。
 
-选定 Skill 后，读取其 `SKILL.md`（必要时含 `SPEC.md`），以 Skill 自身声明的触发条件、output_dir 和执行流程为准。多个产出型 Skill 同时匹配时，按任务主目标选择主产物目录。
+选定 Skill 后，读取其 `SKILL.md`（必要时含 `SPEC.md`），以 Skill 自身声明的触发条件、output_dir 和执行流程为准。Skill 契约加载是持续义务，不是一次性动作：每当执行进入该 Skill 管辖的动作域（如 git commit 进入 git-governance、代码开发进入 development-governance），模型对规则的记忆不可替代当前会话中实际加载的 SPEC 内容——这是 `GATE-SOURCE`「不以记忆替代权威来源」在 Skill 层面的延伸。多个产出型 Skill 同时匹配时，按任务主目标选择主产物目录。
 
 ### Skill 入口索引
 
@@ -291,7 +291,7 @@ Skill 调度采用"主治理 Skill + 行为型 Overlay Skill"模型：
 
 ### 4.1 应答前自检链（每次输出前快速过一遍）
 
-按顺序自问，命中即执行对应门禁，全部通过才输出：
+按顺序自问，命中即执行对应门禁，全部通过才输出。当检查点涉及特定 Skill 管辖域时，该 Skill 的 SPEC 是执行契约的权威来源——必须确认已在当前会话实际加载，不得以「我大概记得」替代：
 
 1. 这句话在宣称完成/修复/通过吗？→ `GATE-EVIDENCE`：当轮验证跑了吗？读退出码了吗？同时执行 `pua` 的 `enforce_evidence_before_claim`。
 2. 要写或改文件吗？→ `GATE-ROOT`（路径在项目根下？）+ `GATE-ENCODING`（UTF-8 无 BOM、未破坏字符？）
@@ -313,6 +313,7 @@ Skill 调度采用"主治理 Skill + 行为型 Overlay Skill"模型：
 | 项目级约束   | `AGENTS.md`                                                                                     | 聊天记忆、旧日志、未同步 README          |
 | 场景流程     | 对应 `skills/*/SKILL.md` 与 `SPEC.md`                                                         | `AGENTS.md` 中的旧摘要、历史执行记录   |
 | 当前代码行为 | 真实源码、测试、配置和运行结果                                                                    | 旧需求文档、旧工作日志、未验证推断       |
+| Skill 管辖动作 | 该 Skill 的 `SPEC.md` 中对应规范节（如 git-governance §9 定义提交格式）                      | 模型记忆、旧会话加载、“我大概记得” |
 | 当前开发边界 | 用户最新确认、当前阶段的 `docs/requirements/`、`docs/development/` 或 `docs/refactor/` 文档 | 过期 TODO、历史阶段文档                  |
 | 进度索引     | `skills/auggie-mcp/` 暴露的外部任务索引能力、`docs/TODO.md`                                   | 不能裁决接口、配置、架构和完成状态       |
 | 历史背景     | `docs/work-logs/`、`docs/references/`、旧需求/旧重构记录                                      | 不能覆盖当前源码、当前阶段文档和最新确认 |
