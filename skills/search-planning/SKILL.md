@@ -1,7 +1,7 @@
 # 搜索规划 Skill
 
 **skill_id**: `search-planning`
-**版本**: 1.1.1
+**版本**: 1.1.2
 **output_dir**: `docs/references/`
 
 ---
@@ -224,7 +224,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 | 需求对齐前需要外部资料调研 | `requirements-governance` | 在需求收集阶段调用 search-planning，结果归 `docs/references/` |
 | 重大重构前需要技术调研 | `refactor-governance` | 在方案讨论阶段调用 search-planning |
 | code-review 中遇到 unfamiliar 技术 | `code-review` | 调用 search-planning 后读到的资料作为 review 依据 |
-| 调试需要参考外部 issue / 博客 | `systematic-debugging` | 在 form_root_cause_hypothesis 阶段调用 search-planning |
+| 调试需要跨源比较外部 issue / 博客 | `systematic-debugging` | 在建立或检验根因证据时按需调用 search-planning |
 
 search-planning 本身不替代以上任何 skill，只为它们的"先调研再做"提供可复用骨架。
 
