@@ -1,6 +1,6 @@
 # 搜索规划 Skill 规范
 
-**版本**: 1.1.1
+**版本**: 1.1.2
 **适用范围**: comparative / exploratory / analytical 类多步调研的规划阶段
 
 ---
@@ -182,3 +182,4 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 | 1.0.0 | 2026-04-30 | 初始版本，依据 GrokSearch search-planning Anthropic Skill 治理化改写 |
 | 1.1.0 | 2026-05-05 | 事实源校准：把"工具实现"事实源从未存在的 `skills/search-planning/` 改为 `src/grok_search/server.py` + `planning.py` + `sources.py`；删除主叙述中的 `mcp5_*` 客户端 prefix，统一使用 grok-search MCP 通用工具名；新增 §8 事实源分层表与 §1.5 / §7.3 scope 边界，明确 search-planning 只治理调研规划方法论，完整 grok-search MCP 使用由后续 `skills/grok-search/` 承接 |
 | 1.1.1 | 2026-05-29 | 增加「模板实例化说明」：明确 grok-search MCP 工具名、`skills/grok-search/` 与 GrokSearch 仓库引用属于来源项目示例绑定，实例化到非 GrokSearch 项目时应替换为该项目实际搜索/抓取工具 |
+| 1.1.2 | 2026-08-20 | 对齐 systematic-debugging 2.0：移除已废弃的固定根因假说阶段名，改为在建立或检验根因证据时按需调用多步外部调研 |
