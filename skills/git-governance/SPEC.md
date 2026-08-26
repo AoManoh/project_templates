@@ -1,23 +1,26 @@
 # Git 协作治理规范
 
-**版本**: 2.0.0
-**适用范围**: Git 仓库边界、remote 与认证、分支同步、提交、提交信息、push、异常恢复和结果验证
+**版本**: 2.1.0
+**适用范围**: Git 仓库边界、remote 与认证、分支/worktree 生命周期、分支同步、提交、提交信息、push、异常恢复和结果验证
 
 ## 1. 目标与事实来源
 
-本规范保证一轮 Git 操作同时满足五件事：
+本规范保证一轮 Git 操作同时满足六件事：
 
 1. 操作发生在正确的 Git 仓库；
 2. remote、平台、认证方式和目标 branch 明确；
-3. 同步策略不会意外覆盖工作树或改写共享历史；
-4. 每个 commit 只有一个中心变化，提交信息足以让人类工程师开始代码评审；
-5. push 后读取远端引用，确认实际结果。
+3. branch/worktree 只有在隔离需要真实存在时创建，并有明确归属和退出条件；
+4. 同步策略不会意外覆盖工作树或改写共享历史；
+5. 每个 commit 只有一个中心变化，提交信息足以让人类工程师开始代码评审；
+6. push 后读取远端引用，并回收或登记本任务创建的 branch/worktree。
 
 Git 事实按以下来源裁决：
 
 | 事实 | 当前来源 |
 |---|---|
 | Git 仓库根、HEAD、工作树、index、branch、remote 配置 | 当前仓库的 Git 命令输出 |
+| branch/worktree 的当前占用与提交 | `git worktree list`、branch refs 和对应工作树状态 |
+| branch/worktree 的创建者、用途和退出条件 | 当前 primary 产物或最新 `docs/work-logs/` 生命周期记录；缺失时视为归属不明 |
 | 远端 branch 和 commit | fetch/ls-remote 后的远端引用及平台结构化结果 |
 | GitHub/Codeup 支持的认证方式 | 对应平台当前官方设置和文档；本规范给出已确认基线 |
 | 提交实际内容 | commit tree、parent、message 和 changed-file 清单 |
@@ -520,7 +523,116 @@ Push 成功不代表 PR/MR 已创建、合并、发布或部署。必须分别�
 
 平台拒绝直接 push 且错误指向 branch protection 时，按项目流程创建 PR/MR。禁止通过 force push、替代 branch 名或关闭保护绕过策略。
 
-## 11. 错误恢复
+## 11. Branch 与 Worktree 生命周期
+
+### 11.1 何时允许创建
+
+创建前先读取：
+
+```bash
+git worktree list --porcelain
+git branch -vv
+git status -sb
+git rev-parse --git-common-dir
+```
+
+任何 Agent 写入 worktree 前都必须取得其他 Agent 可见的 write claim，包括既有 main worktree。项目没有现成机制时，默认在 Git common dir 的 `agent-worktree-claims/` 下以 canonical worktree path 的稳定哈希为 key；用仅在 key 不存在时成功的原子目录创建取得 claim，创建失败即视为已占用，不覆盖。记录当前 owner、任务、worktree、branch/ref、基线 OID、状态和更新时间。私有会话 todo 或聊天声明不能作为并发 claim。发现 active/unknown claim 时不写入、不抢占；无法安全建立共享 claim 时改用独立 worktree。
+
+创建任何新对象前，先把已经合入目标、same-tip、没有生命周期记录或不再被 worktree 使用标为调查信号。它们本身不能证明可删除；只有 owner 已 release、目标 OID 已钉住、唯一数据和 reflog 已检查时才成为清理候选。归属不明时先查记录或询问用户。
+
+选择顺序：
+
+1. 当前工作区能够安全完成任务时，不创建新 branch/worktree；
+2. 只读分析、历史审计、构建或验证需要隔离时，优先从明确 commit 创建 detached worktree，不创建 branch；
+3. 单个短生命周期 commit 已有明确推送目标、会在本会话立即推送和验证时，可以使用 detached worktree；删除前必须确认 commit 已被远端 ref 或保留 ref 接住；
+4. 多 commit、跨会话、尚无发布授权或需要等待其他任务的写入，才创建专用 branch 与 worktree；
+5. 只有为高风险操作提供回退时才创建 rescue branch；它不是普通工作 branch。
+
+不得把“可能并发”当作无条件建 branch 的理由。创建者必须先确认没有现成隔离环境可复用，也不能让多个 Agent 在同一 mutable worktree 或同一 branch 上并发写入。
+
+### 11.2 创建记录
+
+创建 branch/worktree 时立即记录：
+
+| 字段 | 要求 |
+|---|---|
+| 创建者 | 当前任务或 Agent 的可识别名称，不写秘密或临时模型思维 |
+| 当前 owner 与状态 | owner；`active`、`blocked`、`released` 或 `stale`，clean/merged 不等于 released |
+| 用途 | 一句话说明它隔离哪项写入、验证或恢复动作 |
+| 基线 | 创建时的完整 commit OID 和来源 ref |
+| 是否允许 commit | detached 验证默认不允许；立即发布的单 commit 任务需明确允许范围和目标 ref |
+| 合入/推送目标 | 没有授权时写“未授权”，不得猜测 main |
+| durable anchor | detached commit 当前由哪个 local/remote/ref 保持可达；没有 commit 时写“不适用” |
+| 最近确认与下次复核 | owner 最近确认状态的事实及下一检查点；错过检查点只标 stale，不自动删除 |
+| 当前下一动作 | 可以由后续 Agent 直接执行或继续取证的具体动作 |
+| handoff | owner 变更时记录释放方、接收方、OID、dirty 状态和剩余边界 |
+| 退出条件 | 合入、验证结束、远端确认、回退窗口关闭或用户放弃 |
+| 清理动作 | remove worktree、删除 local branch、删除 remote branch 分开列出 |
+
+写 branch 使用能说明任务的 `work/<scope>-<purpose>`；rescue 使用 `rescue/<date>-<reason>`。禁止 `tmp`、`test2`、`branch3`、模型名或纯会话编号等无法让维护者判断用途的名称。名称不能替代生命周期记录。
+
+只在当前会话内使用且会立即回收的 detached worktree 可以保留在任务记录中；branch/worktree 跨会话保留时，必须把上述字段写入当前 primary 产物或 `docs/work-logs/YYYY-MM-DD.md`。
+
+Write claim 在 owner 明确 release 或完成 handoff 前保持 active/blocked；clean、merged 或超过复核点都不会自动释放。超过复核点只把状态改为 stale 并停止新写入，由 owner 续期、明确 handoff，或在保护 unique/dirty/reflog 数据后走用户批准的 orphan recovery。Claim 的释放或移交必须同步更新共享记录，不能只在私有会话中声明。
+
+### 11.3 多 Agent 隔离
+
+- 一个写任务使用一个 branch/worktree；branch 已被其他 worktree 使用时不抢占、不强制切换；
+- Agent 只修改自己持有 active claim 且被授权的 worktree、branch 和文件范围；发现其他 Agent 的 claim 或未提交内容时停止；
+- clean/merged 只证明数据状态，不证明其他 owner 已释放对象；没有可发现的 release/handoff 时不得清理或接管；
+- 从同一基线并行的任务分别提交，之后由明确的整合任务决定顺序和冲突，不让任一 Agent 自行合并其他分支；
+- 创建 branch 只授权本地隔离，不自动授权 push、PR/MR 或进入 main；
+- 只读 Agent 不为“方便”创建 branch。
+
+### 11.4 任务结束盘点
+
+```bash
+git worktree list --porcelain -z
+git -C <worktree> status --porcelain=v1 --untracked-files=all --ignored
+git -C <worktree> submodule foreach --recursive 'git status --porcelain=v1 --untracked-files=all --ignored'
+git branch -vv
+git rev-parse <branch> <target>
+git merge-base --is-ancestor <branch-oid> <target-oid>
+```
+
+每个 worktree 分别检查 staged、unstaged、untracked、ignored、submodule、nested repository 和 lock reason。Ignored 文件也可能是用户数据；superproject 看似 clean 不能证明 worktree 可删除。`branch --merged/--no-merged` 只能作为提示，最终使用钉住的 branch/target OID 做 ancestry 判断；squash、rebase 或 cherry-pick 后的 patch-equivalence 不代表原 commit OID 已被保留。不得因 superproject clean 就使用 `git worktree remove --force`；remove 拒绝时先判断 dirty/ignored 数据、populated submodule、nested repository 或 worktree lock。
+
+对本任务创建的每个对象逐项裁决：
+
+| 状态 | 处理 |
+|---|---|
+| detached worktree 完成全量数据检查、验证结束且没有新 commit | owner release 后，经绑定当前 path/HEAD/数据状态的确认 remove；不得遗留目录 |
+| detached worktree 产生了 commit | 证明 commit 已被另一 durable ref 保持可达，记录 anchor 后再确认 remove；否则不得制造 dangling commit |
+| worktree 有 staged/unstaged/untracked/ignored、submodule 或 nested-repo 数据 | 不 remove；先让 owner/用户决定保存、移交或丢弃 |
+| local branch tip 可从钉住的目标 OID 到达 | 只说明 commit 可达；owner release 后仍需检查 branch 角色、upstream/config 和 reflog-only OID，再确认删除 |
+| local branch 与另一保留 branch same-tip | 相同 tip 不等于相同职责；核对 owner、用途、upstream/push role、worktree、config 与 reflog 后决定保留哪个 |
+| local branch tip 不能从目标 OID 到达 | 不删除；列出原 OID 是否被其他 durable ref 保持、唯一提交/patch-equivalence、责任人和下一步 |
+| remote branch 已完成 PR/MR 或不再使用 | 完成不等于原 OID 可达；先建立/证明替代 durable anchor，再按精确 OID 单独确认删除 |
+| rescue branch | 回退窗口关闭后仍要重读完整 ref/OID、owner/worktree 和将失去最后 durable ref 的 commit 集，再列为删除候选 |
+
+Clean/merged 只证明数据状态，不证明 owner release。删除 worktree、local branch、remote branch 和 rescue ref 是不同 destructive action；一次确认不能互相替代。其他 Agent 拥有或可能仍在使用的对象，只有当前 owner 已记录 release/handoff 才能进入普通清理；unknown/stale owner 必须先保护 unique/dirty/reflog 数据，再走用户批准的 orphan recovery。
+
+清理确认必须写明 canonical worktree path 或完整 ref、观察到的 HEAD/OID、dirty/ignored/submodule 状态、owner release 状态、durable anchor 和将失去最后引用的 commit 集。执行前立即重读；任一事实变化都会使确认失效。Remote ref 删除必须用观察 OID 约束：
+
+```bash
+git push --force-with-lease=refs/heads/<branch>:<observed-oid> <remote> :refs/heads/<branch>
+git ls-remote --exit-code --refs <remote> refs/heads/<branch>
+```
+
+第二条应以无匹配、退出状态 2 证明删除完成。不得在 lease 失败、worktree lock、submodule 或 dirty 数据阻塞时改用无约束 force 删除。
+
+### 11.5 退出门禁
+
+创建过 branch/worktree 的任务只有满足以下条件才能结束：
+
+- 当前 worktree/branch 清单和每个目标 worktree 的 dirty/ignored/submodule 状态已经读取；
+- 当前任务的共享 write claim 已 release，或已完成可发现的 handoff；本会话已结束且不再占用 worktree 的 released claim 已移除，跨会话对象仍保留 claim；
+- 本任务创建的 detached worktree 已清理，或因有数据而明确保留；detached commit 已被 durable ref 接住；
+- 本任务创建的 branch 已删除，或记录唯一提交、保留原因、owner/state、最近确认、下次复核、当前下一动作和可判定退出条件；
+- remote branch 和 rescue branch 有明确的 durable anchor、保留/删除状态和精确 OID；
+- 没有以“以后再清理”代替责任、条件和下一步；错过复核点的对象已标 stale，不会被自动删除或继续写入。
+
+## 12. 错误恢复
 
 | 错误 | 分类 | 恢复 |
 |---|---|---|
@@ -532,34 +644,38 @@ Push 成功不代表 PR/MR 已创建、合并、发布或部署。必须分别�
 | merge/rebase conflict | 整合冲突 | 只处理当前操作；无法安全继续则 abort |
 | detached HEAD | 无当前 branch | 记录 HEAD，建立明确保留引用后再切换 |
 | protected branch | 平台策略 | PR/MR，不绕过 |
+| branch 已在其他 worktree checkout | 多 Agent/工作区占用 | 读取 `git worktree list` 和归属；不强制切换、不抢占 |
+| worktree remove 被拒绝 | 可能有 dirty/ignored 数据、populated submodule、nested repo 或 lock | 停止；逐 worktree 检查并由 owner/用户决定，不自动改用 `--force` |
+| branch delete 报未完全合入 | `-d` 相对 upstream 或 HEAD 的保护检查失败 | 读取 upstream 和钉住的目标 OID，重跑 ancestry/patch 检查；不推断唯一提交，也不自动改用 `-D` |
 | push 后跟踪分支未变化 | 裸 URL 或 ref 未 fetch | 读取 ls-remote，并 fetch 命名 remote 验证 |
 
 遇到未列错误时保留原命令、脱敏错误、状态和 refs，再查 Git 或 provider 官方文档；不试探 force/reset。
 
-## 12. Git 决策日志
+## 13. Git 决策日志
 
-只有需要长期审计的异常或高风险决策才写 `docs/work-logs/YYYY-MM-DD.md`：
+只有需要长期审计的异常、高风险决策，或 branch/worktree 需要跨会话保留时才写 `docs/work-logs/YYYY-MM-DD.md`：
 
 - 实际 Git 仓库、branch、remote/provider；
 - 操作前 HEAD、remote ref、ahead/behind 和工作树状态；
 - 触发错误或目标；
 - 选择 merge/rebase/保留分支/历史改写的理由；
 - rescue 引用和恢复命令；
+- 跨会话 branch/worktree 的共享 claim、owner/state、用途、基线、durable anchor、唯一提交、最近确认、下次复核、当前下一动作、handoff、退出条件和清理动作；
 - 实际执行命令；
 - commit 和远端 ref 的最终结果；
 - 未处理的本地改动、风险和责任。
 
 日志不保存凭据，不复制敏感 remote URL 参数，也不冒充当前 branch/ref 事实源。
 
-## 13. 退出门禁
+## 14. 退出门禁
 
-### 13.1 只读检查
+### 14.1 只读检查
 
 - 仓库根、HEAD、branch、工作树、remote 名称、浅克隆状态和目标问题均已从当前 Git 输出确认；
 - URL 只以脱敏形式显示，且多 URL/pushurl 数量已检查；
 - 结论区分本地、远端和历史背景。
 
-### 13.2 Commit
+### 14.2 Commit
 
 - `git add` 前 intended paths 已完成公开性四问，暂存后再次检查；
 - staged diff 只有一个中心变化；
@@ -569,7 +685,7 @@ Push 成功不代表 PR/MR 已创建、合并、发布或部署。必须分别�
 - commit 后真实 OID、tree、parent、文件清单和 message 已读取；
 - 不把 commit 存在外推成 push 或 merge。
 
-### 13.3 Sync/Merge/Rebase
+### 14.3 Sync/Merge/Rebase
 
 - 操作前有完整历史基线和覆盖实际数据类型的恢复路径；
 - staged、unstaged 和 untracked 状态已按用户决定处理；
@@ -577,7 +693,7 @@ Push 成功不代表 PR/MR 已创建、合并、发布或部署。必须分别�
 - 冲突、验证和剩余差异可解释；
 - 未使用未授权历史改写。
 
-### 13.4 Push
+### 14.4 Push
 
 - remote/provider、单一 push 目标、完整 `refs/heads/<branch>`、认证协议和授权目标明确；
 - push 前精确远端 OID 已保存，remote-only 为 0，或新建 branch 已单独授权；
@@ -585,10 +701,19 @@ Push 成功不代表 PR/MR 已创建、合并、发布或部署。必须分别�
 - 多 remote 分别验证；
 - 未把 push 写成 PR/MR、merge、release 或 deploy。
 
-## 14. 版本历史
+### 14.5 Branch/Worktree 生命周期
+
+- 创建前已经记录归属、用途、基线、commit 权限、目标、退出条件和清理动作；
+- 多 Agent 没有共享 mutable worktree/branch，也没有接管归属不明的未提交内容；
+- 本任务创建的 detached commit 已被远端或保留 ref 接住；
+- 本任务创建的 branch/worktree 已按确认清理，或有唯一提交、保留原因、责任人和可判定退出条件；
+- local、remote 和 rescue refs 分别裁决，没有用一次删除确认覆盖其他对象。
+
+## 15. 版本历史
 
 | 版本 | 变更 |
 |---|---|
+| 2.1.0 | 增加 branch/worktree 生命周期：写入前使用共享 claim，按任务寿命选择 detached 或专用 branch，检查 ignored/submodule/nested-repo 数据，以钉住的 OID 和 owner release 裁决清理，并为跨会话、remote、rescue 和 orphan recovery 记录 durable anchor、复核点与条件删除 |
 | 2.0.0 | 将 Git 治理从提交格式和冲突恢复扩展为完整协作链路：区分项目根/Git 根，增加 remote 角色、GitHub/Codeup 认证、fetch/push URL、多平台、dirty worktree、ahead/behind、分叉决策和远端验证；增加一个 commit 一个中心变化；把提交信息升级为面向人类代码评审的四段自包含契约，并补充机器检查、敏感信息、引用、revert/cherry-pick/merge/破坏性变化规则 |
 | 1.1.0 | 增加 Conventional Commits 标题、三段 body、footer 和提交前公开性检查 |
 | 1.0.0 | 定义共享分支同步、merge/rebase 恢复、救援分支和双端开发流程 |

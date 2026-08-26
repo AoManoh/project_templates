@@ -7,14 +7,15 @@ description: >-
   中断或多端同步问题时也使用。负责确认实际 Git 仓库、GitHub/Codeup 等平台支持
   的认证方式、远端角色、同步策略、单一逻辑提交、人类可评审的自包含提交信息、
   push 目标和远端结果。它不决定业务需求、代码方案或测试充分性；这些仍由当前任务
-  owner 决定，Git Skill 只把已经确认的改动安全、清楚地写入版本历史。生成或改写
-  提交信息时，最终回复只包含可直接提交的 message，不输出读取、检查或分析过程。
+  owner 决定，Git Skill 只把已经确认的改动安全、清楚地写入版本历史。创建 branch
+  或 worktree 时还必须记录归属、用途和退出条件，并在任务结束时回收或说明保留原因。
+  生成或改写提交信息时，最终回复只包含可直接提交的 message，不输出读取、检查或分析过程。
 ---
 
 # Git 协作治理 Skill
 
 **skill_id**: `git-governance`
-**版本**: 2.0.0
+**版本**: 2.1.0
 **output_dir**: `docs/work-logs/`
 **SPEC**: [SPEC.md](./SPEC.md)
 
@@ -26,11 +27,13 @@ description: >-
 确认 Git 仓库和 remote
 → 确认平台与认证方式
 → fetch 并判断 ahead/behind
+→ 需要隔离时选择 detached worktree 或有明确归属的 branch/worktree
 → 选择 fast-forward、merge、rebase 或停止
 → 把一个中心变化整理为一个 commit
 → 写出人类工程师可直接用于代码评审的提交信息
 → push 到明确 remote/branch
 → 读取远端 ref 验证结果
+→ 回收本任务创建的 worktree/branch，或说明保留原因和退出条件
 ```
 
 本 Skill 不拥有业务目标、实现方案、代码修改和测试设计。它可以在 development、refactor、debug 或其他任务中作为 Git collaborator；当前 primary owner 仍负责改动内容和验证是否充分。
@@ -64,6 +67,7 @@ description: >-
 11. **提交信息按事实类型取证**：旧/新行为和影响回到业务契约或仓库事实；风险和权衡写明依据与不确定性；验证结果只能来自实际命令、CI、运行或人工检查。不得猜测旧作者意图、停机时间、文件范围、风险等级或测试结果。
 12. **破坏性变化必须显式标记**：任何使既有调用方、数据或运维流程不能继续按原契约工作的接口、输入、输出、配置、数据格式、默认值或运行语义变化，标题使用 `!`；footer 写明已知前后行为，并给出已确认迁移动作、明确无迁移路径，或如实说明迁移路径尚未确认。
 13. **保留历史不等于授权发布**：merge 可以避免重写双方历史，但不会自动授权把 local-only 提交推到远端；共享状态、目标 tree 或发布范围不清时停止并请用户裁决，不以 merge 作为默认猜测。
+14. **Branch/Worktree 有创建就有回收**：任何 worktree 写入前取得共享 write claim；创建时记录 owner、用途、基线、提交权限、退出条件和清理动作。只读或验证优先 detached，一项写任务独占一个 worktree。结束前盘点本任务对象；clean/merged 不代表 owner release，清理必须绑定最终 OID/dirty/owner 状态并获确认，其他 Agent 或归属不明对象只能经用户批准的 orphan recovery 处理。
 
 ## 4. 最小执行流程
 
@@ -135,6 +139,25 @@ git ls-remote --exit-code --refs <remote> refs/heads/<branch>
 
 Push 前保存精确远端 OID，push 后重新读取并与 `git rev-parse HEAD` 比较；命令退出 0 或 tracking ref 相同不替代 OID 等值检查。远端 branch 原本不存在时，按新建 branch 单独授权。Push 被拒绝时按错误类型处理：认证错误修认证，non-fast-forward 回到分叉决策，protected branch 转 PR/MR，不能统一用 force push 解决。
 
+### 4.6 Branch/Worktree 收口
+
+```bash
+git worktree list --porcelain -z
+git -C <worktree> status --porcelain=v1 --untracked-files=all --ignored
+git -C <worktree> submodule foreach --recursive 'git status --porcelain=v1 --untracked-files=all --ignored'
+git branch -vv
+git rev-parse <branch> <target>
+git merge-base --is-ancestor <branch-oid> <target-oid>
+```
+
+1. 任何写入先取得共享 write claim；active/unknown claim 不抢占，私有 todo 不算并发声明。
+2. 只读、调研或验证任务优先 detached worktree，不创建 branch；单 commit 会在本会话立即推送和验证时也可 detached，但删除前必须由 durable ref 接住。
+3. 多 commit、跨会话或等待其他任务的写入才创建 branch/worktree；创建前登记 owner/state、用途、基线、退出条件和下次复核。
+4. 结束时逐 worktree 检查 tracked/untracked/ignored、submodule 和 nested repo；clean/merged 不等于 owner release。
+5. 清理确认绑定 canonical path/ref、最终 OID、数据/owner 状态和 loss set；执行前重读，变化即失效。
+6. 删除 worktree、local、remote 和 rescue ref 分别确认；remote 删除使用精确 OID lease，其他 Agent 或 stale claim 走 orphan recovery。
+7. 无法清理时记录 durable anchor、唯一提交、owner、当前下一动作和可判定复核点，不能静默遗留。
+
 ## 5. 提交信息快速检查
 
 详细格式和例外只在 SPEC §9 维护。生成草稿前确认：
@@ -173,4 +196,5 @@ Push 前保存精确远端 OID，push 后重新读取并与 `git rev-parse HEAD`
 - 文件和 message 已完成公开性与敏感信息检查；
 - push 场景已读取远端 ref；多个 remote 分别验证；
 - 没有把 commit、push、PR/MR、merge 或发布互相冒充；
-- 高风险或异常 Git 决策已按需写入 `docs/work-logs/`。
+- 本任务 write claim 已 release/handoff；创建的 worktree/branch 已按最终状态确认清理，或已记录 durable anchor、唯一提交、owner/state、最近确认、下一复核和当前下一动作；
+- 高风险、异常或保留临时 branch 的 Git 决策已按需写入 `docs/work-logs/`。
