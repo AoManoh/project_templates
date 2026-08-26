@@ -1,7 +1,9 @@
 # Git 协作治理规范
 
-**版本**: 2.1.0
+**版本**: 2.2.0
 **适用范围**: Git 仓库边界、remote 与认证、分支/worktree 生命周期、分支同步、提交、提交信息、push、异常恢复和结果验证
+
+**加载契约**: `SKILL.md` 是触发与路由层；本文件是细则层。触发后先用内容搜索工具匹配 `^## `，定位章节起止，只读 `SKILL.md` 场景矩阵命中的行段；项目根、Git 根或事实来源不明确时才补读 §1–2。禁止从文件开头顺序翻页到目标章节，也不要默认把完整 SPEC 加入上下文。任务范围扩大时再补读，执行 Git 写操作后按需加载 §14 的对应退出门禁。本文件仍是细则唯一事实源，选择性加载不允许凭记忆补齐未读规则。运行时发现适配器只能包含同一 `name/description` 和 canonical Skill 路径，不得复制流程；提交前机械检查 adapter 与 canonical description 一致。
 
 ## 1. 目标与事实来源
 
@@ -336,7 +338,9 @@ feat(systematic-debugging): 发布 checkpoint
 
 不得凭记忆填写，也不得用 `hash/publicity/main-set=PASS` 等检查器名称替代可理解结果。证据只支持部分结论时缩小表述；不推断旧作者意图、停机时间、未给出的文件、风险等级或测试结果。
 
-本项目提交信息使用中文，真实 API、标识符和协议字段保留原名。文字使用人类工程师陈述事实的语气，不包含模型/工具读取过程、AI branding 或 AI attribution；项目明确要求机器生成声明时除外。
+本项目提交信息使用中文，真实 API、标识符和协议字段保留原名。文字使用人类工程师陈述事实的语气，不把当前会话中的模型/工具读取过程写入正文，也不包含 AI branding 或 AI attribution；项目明确要求机器生成声明时除外。
+
+当前会话中的用户、Agent、模型、工具或 reviewer 的请求、判断和操作过程不能代替问题、方案理由与影响；正文直接陈述已经确认的行为、约束、理由和结果。同名主体若是实际业务用户、调用方、运维角色、服务、组件或改动对象中的模型/工具，可以按领域事实正常出现，并让默认读者能够判断其具体角色。
 
 ### 9.4 自包含评审门禁
 
@@ -365,8 +369,8 @@ BREAKING CHANGE: <受影响接口；旧行为；新行为；调用方迁移动�
 规则：
 
 - 引用 commit 时同时给足够长度的 SHA 和标题；不禁止哈希，但禁止只给哈希；
-- repo-relative 路径应在目标 tree 中可追踪；若本提交删除或重命名该路径，正文明确其旧身份，并保证它可从指定 parent/source commit 定位；仓库外文档必须把关键结论写回正文；
-- URL、issue、任务号和设计文档不能替代问题、方案与影响；
+- 未随目标 commit 提供、默认读者无权访问或可能失效的文档、路径、issue、日志、编号和章节，不能承担问题、方案、授权或验证结论；必要结论先在 body 中自包含说明；
+- 目标 tree 中可追踪的 repo-relative 路径、稳定章节、公开 issue 和 commit 可以补充定位；若本提交删除或重命名路径，正文明确其旧身份，并保证它可从指定 parent/source commit 定位；引用不能替代问题、方案与影响；
 - 机器 trailer 放在正文末尾；
 - 既有调用方、数据或运维流程不能继续按原契约工作的接口、输入、输出、配置、数据格式、默认值或运行语义变化，必须同时使用标题 `!` 和 `BREAKING CHANGE`；
 - `BREAKING CHANGE` 不只写 schema/版本号，必须写受影响对象和已知前后行为；迁移部分写已确认动作、明确没有迁移路径，或如实说明迁移路径尚未确认，未知停机和步骤不得推断；
@@ -399,24 +403,24 @@ BREAKING CHANGE: <受影响接口；旧行为；新行为；调用方迁移动�
 
 ### 9.8 正反示例
 
-以下是通用教学例子，不代表当前项目实现。
+以下是只演示结构的虚构例子，不代表当前项目实现。例子中的行为、影响、文件和验证结果不得复用到其他提交；每句话都要由当前 staged diff 和实际证据独立支持。
 
 不通过：
 
 ```text
-fix(checkout): 优化库存处理
+fix(cache): 优化缓存
 
 背景：
-- checkout 有问题。
+- 缓存有问题。
 
 变更：
-- 完善库存机制。
+- 完善过期机制。
 
 影响与边界：
 - 提升一致性。
 
 验证：
-- Tests: checkout=PASS
+- Tests: cache=PASS
 ```
 
 它没有说明触发条件、旧行为、新行为和测试结果，评审者无法判断 diff 是否解决了真实问题。
@@ -424,21 +428,20 @@ fix(checkout): 优化库存处理
 通过方向：
 
 ```text
-fix(checkout): 支付拒绝时保持库存不变
+fix(cache): 过期条目不再命中读取请求
 
 背景：
-- checkout 在支付被拒绝后仍保留库存扣减，用户没有完成订单，但后续请求看到的可售库存已经减少。
+- 读取路径只检查 key 是否存在，没有核对过期时间；已过期条目仍会作为有效值返回给调用方。
 
 变更：
-- checkout 现在只在支付成功后确认库存扣减；支付拒绝时返回失败，并保持原库存数量。
+- 读取命中后先比较 `expiresAt`；条目过期时删除该条目并返回未命中，未过期条目的读取方式不变。
 
 影响与边界：
-- 支付失败不再占用库存；支付成功流程和库存不足处理不变。
-- 本提交只修改 checkout 的库存确认顺序，不改变支付服务接口。
+- 调用方不会再收到已过期值；本提交不增加后台清理任务，也不改变未过期条目的存储格式。
 
 验证：
-- 拒绝支付场景测试通过：响应失败且库存保持原值。
-- 支付成功和库存不足回归测试通过；未执行跨服务端到端测试。
+- 过期条目读取场景通过：返回未命中且条目被删除。
+- 未过期条目读取回归通过；未执行并发清理场景。
 ```
 
 ### 9.9 提交信息机械与语义复核
@@ -641,7 +644,7 @@ git ls-remote --exit-code --refs <remote> refs/heads/<branch>
 | `Permission denied (publickey)` | SSH key/账号/host | 用户检查公钥、账号、host alias 和 ssh-agent；不复制私钥 |
 | `non-fast-forward` | 历史分叉 | fetch、比较 remote-only/local-only，按第 6 节处理 |
 | `Need to specify how to reconcile divergent branches` | 未选择整合策略 | 停止 pull，显式选择 fast-forward、merge、rebase 或保留分支 |
-| merge/rebase conflict | 整合冲突 | 只处理当前操作；无法安全继续则 abort |
+| merge/rebase/cherry-pick/revert conflict | 整合冲突 | 只处理当前操作；无法安全继续则执行对应 abort/quit，不叠加其他 Git 操作 |
 | detached HEAD | 无当前 branch | 记录 HEAD，建立明确保留引用后再切换 |
 | protected branch | 平台策略 | PR/MR，不绕过 |
 | branch 已在其他 worktree checkout | 多 Agent/工作区占用 | 读取 `git worktree list` 和归属；不强制切换、不抢占 |
@@ -685,7 +688,7 @@ git ls-remote --exit-code --refs <remote> refs/heads/<branch>
 - commit 后真实 OID、tree、parent、文件清单和 message 已读取；
 - 不把 commit 存在外推成 push 或 merge。
 
-### 14.3 Sync/Merge/Rebase
+### 14.3 Sync/Merge/Rebase/Cherry-pick/Revert
 
 - 操作前有完整历史基线和覆盖实际数据类型的恢复路径；
 - staged、unstaged 和 untracked 状态已按用户决定处理；
@@ -709,10 +712,19 @@ git ls-remote --exit-code --refs <remote> refs/heads/<branch>
 - 本任务创建的 branch/worktree 已按确认清理，或有唯一提交、保留原因、责任人和可判定退出条件；
 - local、remote 和 rescue refs 分别裁决，没有用一次删除确认覆盖其他对象。
 
+### 14.6 Remote 配置
+
+- 修改的是预期 remote 名称，脱敏旧值、新值、provider、协议和用途已复核；
+- 按 §3.2 重新统计全部有效 fetch/push URL，日常 remote 各只有一个目标且指向同一仓库；
+- 没有凭据进入 URL、日志或文档，认证交互仍由用户在平台或本机完成；
+- `set-url` 后没有假设其他 URL 已被清理，也没有把不同平台仓库伪装成同一 remote；
+- 项目外和全局 Git 配置没有变化。
+
 ## 15. 版本历史
 
 | 版本 | 变更 |
 |---|---|
+| 2.2.0 | 按渐进式披露重写 SKILL 触发描述与选择性章节路由，把核心原则收敛为五条并删除重复命令；增加 Devin 发现适配器；提交信息禁止用会话角色代替理由，明确不可访问引用不能承担结论，并防止教学示例事实污染当前 message |
 | 2.1.0 | 增加 branch/worktree 生命周期：写入前使用共享 claim，按任务寿命选择 detached 或专用 branch，检查 ignored/submodule/nested-repo 数据，以钉住的 OID 和 owner release 裁决清理，并为跨会话、remote、rescue 和 orphan recovery 记录 durable anchor、复核点与条件删除 |
 | 2.0.0 | 将 Git 治理从提交格式和冲突恢复扩展为完整协作链路：区分项目根/Git 根，增加 remote 角色、GitHub/Codeup 认证、fetch/push URL、多平台、dirty worktree、ahead/behind、分叉决策和远端验证；增加一个 commit 一个中心变化；把提交信息升级为面向人类代码评审的四段自包含契约，并补充机器检查、敏感信息、引用、revert/cherry-pick/merge/破坏性变化规则 |
 | 1.1.0 | 增加 Conventional Commits 标题、三段 body、footer 和提交前公开性检查 |
