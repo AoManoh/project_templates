@@ -178,7 +178,8 @@
 │   ├── requirements-governance/ # 需求治理技能
 │   ├── search-planning/       # 多步调研规划方法论技能
 │   ├── systematic-debugging/  # 系统化调试技能
-│   └── chrome-cdp/            # Chrome DevTools Protocol 浏览器自动化技能
+│   ├── chrome-cdp/            # Chrome DevTools Protocol 浏览器自动化技能
+│   └── engineering-writing-style/ # 供人阅读文字的直白表达约束技能
 ├── docs/                      # 文档产出物 + 静态片段
 │   ├── _fragments/            # 环境管理等静态片段
 │   ├── code-review/           # 质量保障报告产出目录（含 _inputs/_codex_raw/_codex_failures 工作子目录）
@@ -267,6 +268,7 @@ Skill 调度采用"主治理 Skill + 行为型 Overlay Skill"模型：
 | search-planning         | [skills/search-planning/SKILL.md](skills/search-planning/SKILL.md)                 | 多步调研规划                               |
 | systematic-debugging    | [skills/systematic-debugging/SKILL.md](skills/systematic-debugging/SKILL.md)       | 复现、定位、修复和验证问题                 |
 | chrome-cdp              | [skills/chrome-cdp/SKILL.md](skills/chrome-cdp/SKILL.md)                           | Chrome 页面检查、截图、交互和浏览器自动化  |
+| engineering-writing-style | [skills/engineering-writing-style/SKILL.md](skills/engineering-writing-style/SKILL.md) | 供人阅读文字的直白表达约束（行为型 Overlay） |
 
 如果 `bug`、`问题` 等词同时匹配调试与质量保障场景，先判断主目标：需要定位并修复根因时优先 `systematic-debugging`；需要审查、测试或生成质量报告时优先 `code-review`。
 

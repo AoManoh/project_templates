@@ -59,6 +59,7 @@
 - `deepwiki`：项目文档生成治理
 - `chrome-cdp`：浏览器自动化能力
 - `pua`：高压场景下的行为约束器，防止 AI 放弃、摆烂、原地打转
+- `engineering-writing-style`：供人阅读文字的直白表达约束，治理隐喻简称、套话和晦涩表述
 
 这套拆分的目的，是给不同阶段设定明确 owner，避免 AI 在一个大上下文里同时扮演所有角色。
 
@@ -117,7 +118,8 @@ project_templates/
 │   ├── codex-orchestration/
 │   ├── deepwiki/
 │   ├── chrome-cdp/
-│   └── pua/
+│   ├── pua/
+│   └── engineering-writing-style/
 └── docs/
     ├── _fragments/
     ├── requirements/
