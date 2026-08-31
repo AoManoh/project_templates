@@ -1,6 +1,6 @@
 # Git 协作治理规范
 
-**版本**: 2.2.0
+**版本**: 2.2.1
 **适用范围**: Git 仓库边界、remote 与认证、分支/worktree 生命周期、分支同步、提交、提交信息、push、异常恢复和结果验证
 
 **加载契约**: `SKILL.md` 是触发与路由层；本文件是细则层。触发后先用内容搜索工具匹配 `^## `，定位章节起止，只读 `SKILL.md` 场景矩阵命中的行段；项目根、Git 根或事实来源不明确时才补读 §1–2。禁止从文件开头顺序翻页到目标章节，也不要默认把完整 SPEC 加入上下文。任务范围扩大时再补读，执行 Git 写操作后按需加载 §14 的对应退出门禁。本文件仍是细则唯一事实源，选择性加载不允许凭记忆补齐未读规则。运行时发现适配器只能包含同一 `name/description` 和 canonical Skill 路径，不得复制流程；提交前机械检查 adapter 与 canonical description 一致。
@@ -283,6 +283,8 @@ git diff --cached
 - 只在本轮工具输出里存在的哈希映射。
 
 Message 与 diff、已有代码一起，应足以让该读者开始判断实现是否符合描述。
+
+术语与解释深度按 `skills/engineering-writing-style/SPEC.md` §1.2 受众政策表的工程师档执行：通用工程术语（HTTP、JSON、goroutine、RSS、p50 等）直接使用、不加括号定义；项目私有概念首次出现给一句作用说明；标题与背景段写行为变化，机制名称放变更段。
 
 ### 9.2 标题
 
@@ -724,6 +726,7 @@ git ls-remote --exit-code --refs <remote> refs/heads/<branch>
 
 | 版本 | 变更 |
 |---|---|
+| 2.2.1 | 提交信息读者档接入 engineering-writing-style SPEC §1.2 受众政策表：通用工程术语不加括号定义，项目私有概念首次出现说明作用，标题与背景段写行为变化 |
 | 2.2.0 | 按渐进式披露重写 SKILL 触发描述与选择性章节路由，把核心原则收敛为五条并删除重复命令；增加 Devin 发现适配器；提交信息禁止用会话角色代替理由，明确不可访问引用不能承担结论，并防止教学示例事实污染当前 message |
 | 2.1.0 | 增加 branch/worktree 生命周期：写入前使用共享 claim，按任务寿命选择 detached 或专用 branch，检查 ignored/submodule/nested-repo 数据，以钉住的 OID 和 owner release 裁决清理，并为跨会话、remote、rescue 和 orphan recovery 记录 durable anchor、复核点与条件删除 |
 | 2.0.0 | 将 Git 治理从提交格式和冲突恢复扩展为完整协作链路：区分项目根/Git 根，增加 remote 角色、GitHub/Codeup 认证、fetch/push URL、多平台、dirty worktree、ahead/behind、分叉决策和远端验证；增加一个 commit 一个中心变化；把提交信息升级为面向人类代码评审的四段自包含契约，并补充机器检查、敏感信息、引用、revert/cherry-pick/merge/破坏性变化规则 |

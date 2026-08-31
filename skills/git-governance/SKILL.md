@@ -11,7 +11,7 @@ description: >-
 # Git 协作治理 Skill
 
 **skill_id**: `git-governance`
-**版本**: 2.2.0
+**版本**: 2.2.1
 **output_dir**: `docs/work-logs/`
 **SPEC**: [SPEC.md](./SPEC.md)
 
