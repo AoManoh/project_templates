@@ -12,7 +12,7 @@ description: >-
 # 工程写作风格 Skill
 
 **skill_id**: `engineering-writing-style`  
-**版本**: 1.5.0  
+**版本**: 1.5.1  
 **output_dir**: `N/A`  
 **SPEC**: [SPEC.md](./SPEC.md)
 
