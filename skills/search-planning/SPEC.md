@@ -1,6 +1,6 @@
 # 搜索规划 Skill 规范
 
-**版本**: 1.1.2
+**版本**: 1.2.0
 **适用范围**: comparative / exploratory / analytical 类多步调研的规划阶段
 
 ---
@@ -17,14 +17,14 @@
 
 | 阶段 | 名称 | 必填字段 | 退出条件 |
 |------|------|----------|----------|
-| 1 | Intent | `core_question`, `query_type`, `time_sensitivity` | 三字段都已填 |
-| 2 | Complexity | `level`, `estimated_sub_queries`, `estimated_tool_calls`, `justification` | `level` ∈ {1, 2, 3}，估算非 0 |
-| 3 | Sub-queries | 每个 sq 的 `id`, `goal`, `expected_output`, `boundary` | 每个 boundary 通过 §5 反模式自检 |
-| 4 | Search terms | 每个 term 的 `term`(≤ 8 词), `purpose`(= sq id), `round` | 每个 sq 至少 1 个 `round=1` 词 |
-| 5 | Tool mapping | 每个 sq 的 `tool`, `reason` | 每个 sq 都有工具决定 |
-| 6 | Execution order | `parallel_groups`, `sequential`, `estimated_rounds` | parallel 成员间无 `depends_on` 关系 |
+| 1 | `intent` | `core_question`, `query_type`, `time_sensitivity` | 三字段都已填 |
+| 2 | `complexity` | `level`, `estimated_queries`, `estimated_calls`, `justification` | `level` ∈ {1, 2, 3}，估算非 0 |
+| 3 | `sub_queries` | 每个 sq 的 `id`, `goal`, `expected_output`, `boundary` | 每个 boundary 通过 §5 反模式自检 |
+| 4 | `search_terms` | 每个 term 的 `term`(≤ 8 词), `purpose`(= sq id), `round` | 每个 sq 至少 1 个 `round=1` 词 |
+| 5 | Tool mapping | 每个 sq 的 `tool_hint`, `reason` | 每个 sq 都有工具决定 |
+| 6 | `execution` | `parallel_groups`, `sequential`, `estimated_rounds` | parallel 成员间无 `depends_on` 关系 |
 
-字段语义以 grok-search MCP `src/grok_search/server.py` 中各 `plan_*` 工具的 `@mcp.tool()` `description` 和 `Annotated` 字段说明为最终事实源（`plan_intent` 在 line 1063 起，依次到 `plan_execution`）。本表只列必填字段与退出条件；可选字段（如 `is_revision` / `confidence` / `depends_on`）以源码注解为准。
+阶段名称 `intent` / `complexity` / `sub_queries` / `search_terms` / `execution` 与字段名 `estimated_queries` / `estimated_calls` / `tool_hint` 自 1.2.0 起采用 openscry `research_plan` 输出的字段名（Phase 5 在 `research_plan` 中没有顶层字段，保留名称 Tool mapping）；项目配置了 openscry MCP 时，本表字段与 `research_plan` 输出的逐项对应以 §9.4 为准。字段语义以 grok-search MCP `src/grok_search/server.py` 中各 `plan_*` 工具的 `@mcp.tool()` `description` 和 `Annotated` 字段说明为最终事实源（`plan_intent` 在 line 1063 起，依次到 `plan_execution`）。本表只列必填字段与退出条件；可选字段（如 `is_revision` / `confidence` / `depends_on`）以源码注解为准。
 
 ---
 
@@ -44,7 +44,7 @@
 | 触发场景 | requirements / refactor / code-review / debug / 其他 |
 | 计划状态 | 仅规划 / 已执行 / 部分执行 |
 
-## Phase 1 — Intent
+## Phase 1 — `intent`
 
 - core_question: ...
 - query_type: factual / comparative / exploratory / analytical
@@ -53,20 +53,20 @@
 - unverified_terms: (可选)
 - premise_valid: true / false
 
-## Phase 2 — Complexity
+## Phase 2 — `complexity`
 
 - level: L?
-- estimated_sub_queries: N
-- estimated_tool_calls: N
+- estimated_queries: N
+- estimated_calls: N
 - justification: 一句话
 
-## Phase 3 — Sub-queries
+## Phase 3 — `sub_queries`
 
 | id | goal | expected_output | boundary | depends_on |
 |---|---|---|---|---|
 | sq1 | ... | ... | ... | - |
 
-## Phase 4 — Search terms（L2+）
+## Phase 4 — `search_terms`（L2+）
 
 approach: broad_first / narrow_first / targeted
 
@@ -76,11 +76,11 @@ approach: broad_first / narrow_first / targeted
 
 ## Phase 5 — Tool mapping（L2+）
 
-| sq | tool | reason | params |
+| sq | tool_hint | reason | params |
 |---|---|---|---|
 | sq1 | web_search | ... | extra_sources=3 |
 
-## Phase 6 — Execution order（L3）
+## Phase 6 — `execution`（L3）
 
 - parallel_groups: [[sq1, sq2], [sq3]]
 - sequential: [sq4]
@@ -162,6 +162,7 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 | 层级 | 唯一事实源 | 本规范的关系 |
 |------|--------------|--------------|
 | 工具实现 | [`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) `src/grok_search/server.py` 的 13 个 `@mcp.tool()` 注册（含 `web_search` / `get_sources` / `web_fetch` / `web_map` / `get_config_info` / `switch_model` / `toggle_builtin_tools` / `plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution`）以及 `planning.py` / `sources.py` | 本规范引用工具名与参数语义时以源码为准；发生参数/字段语义变更时本规范的§2 必填表需同步 |
+| 工具实现（项目配置了 openscry MCP 时） | openscry 的 `tools/list` 与 CHANGELOG | §9 是 openscry 的使用说明，不是工具契约；两者不一致时改 §9 |
 | 方法论 | 本规范自身（§2 - §7） | 上游 process-only Anthropic Skill 镜像（如存在于 `AoManoh/GrokSearch/skills/search-planning/`）共享同一方法论，但措辞差异以本规范为准 |
 | 客户端调用 | 各客户端文档（Cursor / Windsurf / Claude Code 的 MCP 配置） | 本规范不与具体客户端绑定；客户端 prefix（如 `mcp5_plan_intent`）只在客户端文档中作为示例 |
 
@@ -175,7 +176,165 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 
 ---
 
-## 9. 版本历史
+## 9. openscry MCP 调用规范
+
+**读取条件**：仅当项目配置了 openscry MCP 时读取本章。未配置 openscry MCP 的项目跳过本章；§2 - §8 不依赖本章。
+
+**事实源**：openscry 的 `tools/list` 与 CHANGELOG 是工具契约（工具名、参数名、输出字段、尾注格式）的事实源。本章是使用说明，只规定怎样调用才能取得高质量、可核验的检索结果。两者不一致时改本章，不为迎合本章改 openscry。
+
+**绑定版本**：openscry **v0.2.1**。`get_config_info.version` 应输出 `v0.2.1`；不一致时先核对本章与工具的差异，以工具为准。openscry 每次发版（CHANGELOG 新条目）后，维护者按 §9.1 逐项复核本章，并更新本段的绑定版本。
+
+**实测数字来源**：本章的实测数字来自 2026-09-03 对 openscry v0.2.1 的端到端评测（下称"评测"）。评测报告位于 openscry 项目仓库，不在本仓库内；括注中的"评测 §2.4"等编号指该报告的章节，供持有 openscry 仓库的读者核对。本章只收录有评测数据或 openscry 使用记录支持的做法。
+
+### 9.1 工具契约（openscry v0.2.1 `tools/list`）
+
+`*` 表示必填参数。
+
+| 工具 | 必填 / 可选参数 | 用途 | 输出要点 |
+|---|---|---|---|
+| `web_search` | `query`*；`platform`（如 GitHub）、`model`、`extra_sources` | 一次联网检索，返回带引用的答案 | 正文内联 `[[n]](url)`；`Sources (N)` 列表；尾注 `> model:`、`> tools: N server-side calls`、`> elapsed:`；有告警时 `> warning:`；传了 `extra_sources` 时 `> extra_sources: requested N, added M, K duplicated model sources[, failed: …]` |
+| `web_search_batch` | `queries`*（最多 32 条）；同上可选参数 | 多个互不依赖的问题并发检索 | JSON：每条 `status`（ok / error / skipped）、`content`、`sources`、`sources_count`、`server_tool_calls`、`elapsed_s`、`warning` |
+| `web_fetch` | `url`*；`timeout` | 取一个已知 URL 的正文（Markdown） | 首行 `<!-- openscry web_fetch: tier=tavily\|firecrawl\|grok\|http url=… [fetched=…] -->`；GitHub blob/raw 页自动改写为 raw 文件 |
+| `web_map` | `url`*；`max_depth`、`max_breadth`、`limit`、`instructions`、`timeout` | 枚举站点 URL 结构 | JSON：`urls`、`count`、`tier` |
+| `research_plan` | `question`*；`timeout` | 离线生成调研规划（不联网） | JSON，结构见 §9.4；含 `elapsed_s` |
+| `submit_search_task` | `kind`*（web_search / web_search_batch）；`query` 或 `queries`；可选同 `web_search` | 后台执行长检索，立即返回 `task_id` | `state` 起始为 queued |
+| `get_search_task_result` | `task_id`*；`wait`（Go 时长，最大 5m） | 读取 / 长轮询任务结果 | `state`、`result`（结构同上）、时间戳为 UTC |
+| `list_search_tasks` | `states`、`kinds` | 列任务 | 最早的在前 |
+| `cancel_search_task` | `task_id`*；`hint` | 取消排队 / 运行中的任务 | 终态任务原样返回 |
+| `get_config_info` | 无 | 查看版本、模型、工具声明、Tavily / Firecrawl 是否启用、上游连通性 | 不返回任何密钥 |
+
+以下名称在 openscry v0.2.1 中不存在，来自旧文档；规划或归档中遇到即删除：
+
+- `plan_*` 系列工具。openscry 用 `research_plan` 一次输出全部规划字段（§9.4）。
+- `research_plan` 输出中的字段名 `queries` / `tool`。实际字段名为 `sub_queries` / `tool_hint`；`queries` 只作为 `web_search_batch` 与 `submit_search_task` 的参数存在。
+- "上游自动搜索"。检索由 openscry 在请求里显式声明 `web_search` / `x_search`。
+
+### 9.2 结果可信度信号
+
+先读尾注与 Sources 列表，再读正文。
+
+| 信号 | 含义 | 处置 |
+|---|---|---|
+| `> tools: N server-side calls`，N >= 1 | 上游执行了检索 | 正常 |
+| `> tools: 0`，或没有 `> tools:` 行且没有 `Sources` | 没有执行检索，模型直接依据训练数据作答 | 时效性结论一律视为未核验；改写问句重试，或改用 `web_fetch` 读取一手页面 |
+| `> warning: answer carries no source citations …` | 答案没有来源 | 同上 |
+| `> warning: search ran (N …) but the answer contains no parsable citations` | 执行了检索，但正文没有可解析的引用 | 结论可用，逐条溯源不可用；关键事实用 `web_fetch` 复核 |
+| Sources 行尾 ` — via tavily\|firecrawl` | 该来源是 `extra_sources` 追加的 Tavily / Firecrawl 搜索结果，不是模型引用的来源 | 只作候选阅读列表，不作证据（评测 §2.6：补充来源一手占比仅 0.48） |
+| 首行结论给出的版本 / 日期比已知的官方值更新 | 可能来自发布前工件（分支 RELEASES.md、追踪站） | 人工复核官方发布渠道；不直接采信，也不直接判错（评测 §3.1：openscry 返回 Rust 1.98.1 时官方尚未发布该版本，数小时后官方发布） |
+
+### 9.3 调用方式
+
+#### 9.3.1 定向核实
+
+一次调用只核实一个事实。问句写清要什么、以什么为准：
+
+- 版本 / 日期："X 当前稳定版本号与发布日期，以官方发布页或渠道清单为准，区分已发布与计划中。"
+- 许可证："读取仓库 `LICENSE` 文件，说明许可证名称并逐字引用附加条款（多租户 / 品牌 / 源码公开），没读到就写 license not verified。" 然后用 `web_fetch https://github.com/<o>/<r>/blob/<ref>/LICENSE` 读取原文做第二次核对（v0.2.1 起 GitHub blob 页自动改写为 raw 文件）。
+- 仓库事实：传 `platform: "GitHub"`；要求给出 stars 与最近发布 / 提交日期，并确认路径存在。
+- 配置项 / 行为："在官方文档或源码中确认 X 的默认值与生效条件，给出文件路径。"
+
+实测：版本 / 日期类 21/21 正确，3 次复测稳定 1.0，官方域名占比 0.94（评测 §2.4）。
+
+#### 9.3.2 发现类问题
+
+"有哪些项目 / 工具做 X"这类问题，上游检索排序偏向小项目与营销页，知名候选可能不出现在结果中（来源：openscry 使用反馈中编号为 P1 的记录；该记录不在本仓库内）。处理顺序：
+
+1. 先用 GitHub API（`search/repositories`，按 stars 或 `pushed` 排序）或权威榜单取得候选名单；
+2. 再用 `web_search_batch` 对每个候选做 §9.3.1 的定向核实；
+3. 只在没有结构化来源时才让 openscry 发现候选。此时在问句里列出已知候选，要求逐个确认，并要求写出未核实项。
+
+#### 9.3.3 抓取
+
+- 已知 URL 直接调用 `web_fetch`：Tavily 层通常 < 1s；GitHub blob 页自动改写为 raw 文件原文。
+- 长文档不依赖 Grok 层：Console 模型的 browse_page 只取回部分正文，会显式失败 `partial content`。Tavily / Firecrawl 未配置时改用 `web_search`，直接问页面里的那个事实。
+- 需要抓取结果不降级时设 `GROK_FETCH_FALLBACK=strict`：抓取失败时不再降级到 basic-HTTP 层。
+
+#### 9.3.4 批量与异步
+
+- 互不依赖的子查询用 `web_search_batch` 并发执行；实测 3 条并发的总耗时约等于最慢一条的耗时；一批不超过 32 条。
+- 预计超过 1-2 分钟，或不想阻塞当前会话时，用 `submit_search_task` 提交，再用 `get_search_task_result(wait="120s")` 读取；`wait` 上限 5m。
+
+#### 9.3.5 `extra_sources`
+
+默认不传。该参数只把 Tavily / Firecrawl 的搜索结果追加进 Sources，不改变答案正文；实测会把整体一手来源占比从 0.94 降到 0.70，约三成补充来源过时或不相关（评测 §2.6）。需要传时，读 `> extra_sources:` 尾注确认实际新增了几条。
+
+#### 9.3.6 稳定性与复核
+
+- 同一问题多次运行，结论一致，但来源集合不同（Jaccard 0.5-0.6）。需要可复现来源时，记录关键来源 URL，并用 `web_fetch` 抓取正文保存。
+- 关键结论至少两条一手来源互证，或一次 `web_search` 加一次 `web_fetch` 官方页。
+- 时延预算：搜索 p50 约 10-14s、p95 约 20-25s；单次成本约 0.02-0.06 USD（Console 模型）。规划轮次时按此估算。
+
+#### 9.3.7 问句写法
+
+- 问句自包含、只含一个事实、写明输出语言；标识符、版本号、URL 原文保留。
+- 时效性问题写上"截至今天"，并要求区分 released / planned / rumored。
+- 一条 `web_search` 只放一个问题；多个互不相关的问题用 `web_search_batch`。
+
+### 9.4 `research_plan` 输出结构与 §2 字段的对应
+
+`research_plan` 接收 `question`（可选 `timeout`），离线生成规划（不联网、不带检索工具），一次调用输出 §2 全部 6 阶段对应的字段。openscry 不提供 `plan_*` 系列工具；§2 说明与 SKILL.md §3.4 中关于 `plan_*` 的描述属于 grok-search 绑定，配置了 openscry MCP 的项目不使用。v0.2.1 实际输出结构：
+
+```json
+{
+  "intent": {"core_question": "", "query_type": "factual|comparative|exploratory|analytical", "time_sensitivity": "realtime|recent|historical|irrelevant", "domain": ""},
+  "complexity": {"level": 1, "estimated_queries": 0, "estimated_calls": 0, "justification": ""},
+  "sub_queries": [{"id": "sq1", "goal": "", "expected_output": "", "boundary": "", "depends_on": "", "tool_hint": "web_search|web_fetch|web_map"}],
+  "search_terms": [{"term": "", "purpose": "sq1", "round": 1}],
+  "execution": {"parallel_groups": [["sq1"], ["sq2", "sq3"]], "sequential": ["sq2", "sq3"]},
+  "strategies": {"fetch_before_claim": true, "gap_check": true, "fallback_plan": ""},
+  "elapsed_s": 0.0
+}
+```
+
+字段语义：
+
+- `parallel_groups` 自 v0.2.1 起由 openscry 按 `depends_on` 分层推导：同一组并行，组间顺序执行，覆盖全部子查询；`sequential` 只列有前置的子查询。执行时按组推进，不必再自行排序。
+- 每个 `tool_hint` 为空或 `web_search` 的子查询至少有一条 `search_terms`；缺失时 openscry 以该子查询的 `goal` 代替搜索词。
+- `research_plan` 只负责拆解问题；它的 `search_terms` 是起点，执行中按 §9.3 调整。
+
+规划文档（§3 归档模板与 `docs/references/*.md` 中的 Phase 表）直接使用 `research_plan` 的字段名，不另起别名。§2 字段与 `research_plan` 输出的逐项对应：
+
+| §2 阶段 | `research_plan` 字段 | 说明 |
+|---|---|---|
+| 1 `intent` | `intent.core_question` / `query_type` / `time_sensitivity` / `domain` | 名称一致。`unverified_terms`、`premise_valid` 是本规范字段，`research_plan` 不输出，由规划者补填 |
+| 2 `complexity` | `complexity.level` / `estimated_queries` / `estimated_calls` / `justification` | 1.2.0 起 `estimated_sub_queries` 改名 `estimated_queries`，`estimated_tool_calls` 改名 `estimated_calls` |
+| 3 `sub_queries` | `sub_queries[].id` / `goal` / `expected_output` / `boundary` / `depends_on` | 名称一致。`research_plan` 示例中 `depends_on` 是字符串，SKILL.md §4.3 把它定义为 sq id 列表；规划来自 `research_plan` 时按返回值原样记录 |
+| 4 `search_terms` | `search_terms[].term` / `purpose` / `round` | 名称一致。`approach` 与"≤ 8 词"是本规范约束，`research_plan` 不输出 |
+| 5 Tool mapping | `sub_queries[].tool_hint` | 1.2.0 起 `tool` 改名 `tool_hint`，取值 `web_search` / `web_fetch` / `web_map`。`reason`、`params` 是本规范字段，`research_plan` 不输出，由规划者补填 |
+| 6 `execution` | `execution.parallel_groups` / `sequential` | 名称一致。`estimated_rounds` 是本规范字段；规划来自 `research_plan` 时取 `parallel_groups` 的组数，不再加 `sequential` 的长度，因为 `sequential` 中的子查询已包含在 `parallel_groups` 的后续组里 |
+| 无 | `strategies.fetch_before_claim` / `gap_check` / `fallback_plan`、`elapsed_s` | 本规范没有对应字段。规划来自 `research_plan` 时，把 `strategies` 原样附在归档 Phase 6 之后；`elapsed_s` 是本次调用耗时，不属于规划字段 |
+
+执行阶段的工具调用：
+
+- 同一 `parallel_groups` 组内 `tool_hint` 为 `web_search` 的子查询合并为一次 `web_search_batch` 调用（每批不超过 32 条）；`tool_hint` 为 `web_fetch` / `web_map` 的子查询分别调用对应工具。
+- `web_search` / `web_search_batch` 默认不传 `extra_sources`（§9.3.5）。§3 模板中的 `extra_sources=3` 是 grok-search 绑定的示例值，不是 openscry 的默认参数；SKILL.md §3.5 关于 `extra_sources > 0` 时并发上限的规则只在实际传入该参数时适用。
+
+### 9.5 归档与验收
+
+项目配置了 openscry MCP 时，以下要求叠加到 §6 退出门禁的"归档"与"验证"两行：
+
+- 每条事实记录来源 URL、获取时间（到分钟）、出自哪次调用（`web_search` / `web_fetch`）；许可证类事实附 LICENSE 原文片段文件。
+- 报告开头记录 `get_config_info` 输出的 `version`、`model`、`search_tools`，使结论可以对应到工具版本。
+- 验收清单：
+  - 没有把 `> tools: 0` 的结论当作已核验；
+  - 候选名单来自结构化来源（§9.3.2）；
+  - 许可证结论附 LICENSE 引文；
+  - 一手 / 二手来源分开标注；
+  - 未核实字段写"未核实"，不写推断值。
+
+### 9.6 已知限制（截至 v0.2.1）
+
+| 限制 | 原因 | 补偿 |
+|---|---|---|
+| 按域名限定检索不生效 | grok2api v3 Console 路径丢弃 `web_search.filters`（修复需要上游 PR） | 问句里点名官方域名；用 `web_fetch` 官方页复核 |
+| 发现类问题的结果遗漏知名候选 | 上游检索排序偏向小项目与营销页 | §9.3.2 |
+| 同一问题多次运行返回的来源集合不同 | 模型输出非确定性 | §9.3.6 |
+| 长页面经 Grok 抓取层只取回部分正文 | Console 模型 browse_page 只返回部分正文 | 配置 Tavily / Firecrawl；或改用 `web_search` 问具体事实 |
+| `extra_sources` 降低一手来源占比 | 追加的检索结果按相关度而非权威性排序 | 默认 0（不传） |
+
+---
+
+## 10. 版本历史
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -183,3 +342,4 @@ L1 调研可省略 Phase 4 - 6 章节，但 "执行结果" 与 "结论" 仍建�
 | 1.1.0 | 2026-05-05 | 事实源校准：把"工具实现"事实源从未存在的 `skills/search-planning/` 改为 `src/grok_search/server.py` + `planning.py` + `sources.py`；删除主叙述中的 `mcp5_*` 客户端 prefix，统一使用 grok-search MCP 通用工具名；新增 §8 事实源分层表与 §1.5 / §7.3 scope 边界，明确 search-planning 只治理调研规划方法论，完整 grok-search MCP 使用由后续 `skills/grok-search/` 承接 |
 | 1.1.1 | 2026-05-29 | 增加「模板实例化说明」：明确 grok-search MCP 工具名、`skills/grok-search/` 与 GrokSearch 仓库引用属于来源项目示例绑定，实例化到非 GrokSearch 项目时应替换为该项目实际搜索/抓取工具 |
 | 1.1.2 | 2026-08-20 | 对齐 systematic-debugging 2.0：移除已废弃的固定根因假说阶段名，改为在建立或检验根因证据时按需调用多步外部调研 |
+| 1.2.0 | 2026-09-04 | 新增 §9 openscry MCP 调用规范，只在项目配置了 openscry MCP 时读取，绑定 openscry v0.2.1：工具契约、结果可信度信号、调用方式、`research_plan` 输出与 §2 字段的对应、归档与验收、已知限制；§8 事实源表新增 openscry 条件行；原 §9 版本历史改为 §10。字段名按 `research_plan` 输出对照：`estimated_sub_queries` 改名 `estimated_queries`，`estimated_tool_calls` 改名 `estimated_calls`，Phase 5 的 `tool` 改名 `tool_hint`，阶段名称改为 `intent` / `complexity` / `sub_queries` / `search_terms` / `execution`（Phase 5 在 `research_plan` 中无顶层字段，保留 Tool mapping）；`core_question` / `query_type` / `time_sensitivity` / `domain` / `id` / `goal` / `expected_output` / `boundary` / `depends_on` / `term` / `purpose` / `round` / `parallel_groups` / `sequential` 名称已一致，未改；`unverified_terms` / `premise_valid` / `approach` / `reason` / `params` / `estimated_rounds` 在 `research_plan` 中没有对应字段，未改 |

@@ -1,7 +1,7 @@
 # 搜索规划 Skill
 
 **skill_id**: `search-planning`
-**版本**: 1.1.2
+**版本**: 1.2.0
 **output_dir**: `docs/references/`
 
 ---
@@ -39,9 +39,11 @@
 
 字段定义、复杂度评级、边界反模式、归档格式：[SPEC.md](./SPEC.md)
 
+项目配置了 openscry MCP 时，在首次调用 openscry 工具（含 `research_plan`）或判定 openscry 检索结果可信度之前，读取 [SPEC.md](./SPEC.md) §9；未配置 openscry MCP 的项目不读该章。
+
 ### 1.5 Scope 边界
 
-本 skill **只治理"多步调研规划方法论"**——也就是 6 阶段 plan 流程（intent → complexity → sub-queries → search terms → tool mapping → execution）。
+本 skill **只治理"多步调研规划方法论"**——也就是 6 阶段 plan 流程（intent → complexity → sub_queries → search_terms → tool mapping → execution）。
 
 **本 skill 不治理**：
 
@@ -52,6 +54,8 @@
 
 以上属于 grok-search MCP 完整使用面，由 `skills/grok-search/`（待补，独立任务）单独承接。本 skill 引用 grok-search MCP 的工具名（如 `plan_intent` / `web_search`）只用于"何时调用"和"按什么顺序调用"的方法论决策，不下沉到工具内部细节。
 
+例外：项目配置了 openscry MCP 时，openscry 工具的调用方式、结果可信度信号、`research_plan` 输出字段与本 skill 字段的对应、归档验收和已知限制由 [SPEC.md](./SPEC.md) §9 承载；该章只在项目配置了 openscry MCP 时读取，不改变上述 grok-search 边界。
+
 > 模板实例化说明：本 skill 的 6 阶段方法论与项目无关，可直接复用；其中 `grok-search` MCP 工具名、`skills/grok-search/` 以及 GrokSearch 仓库引用属于来源项目的示例绑定，实例化到非 GrokSearch 项目时，应改为该项目实际使用的搜索 / 抓取工具。
 
 ---
@@ -61,6 +65,7 @@
 | 行为 | 时机 |
 |------|------|
 | 读取 SPEC.md | 开始规划前 |
+| 项目配置了 openscry MCP 时读取 SPEC.md §9 | 首次调用 openscry 工具前 |
 | Phase 1 必须输出 `core_question` / `query_type` / `time_sensitivity` 三个字段 | 任何复杂度 |
 | Phase 2 复杂度评级落地为 1 / 2 / 3 | 任何复杂度 |
 | L1 至少完成 Phase 1-3，L2 至少完成 1-5，L3 全部 6 阶段 | 复杂度评级后 |
@@ -112,7 +117,7 @@
 | 时效性（"最新" / "今天"）| `web_search`（grok-search MCP 自注入当前时间上下文）|
 | Paywall / SPA | 跳过 `web_fetch`，让 `web_search` 走 LLM 索引 |
 
-可选：`plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution` 一组工具（grok-search MCP 提供）可把 6 阶段产物落到一个 `session_id` 上，跨调用累积同一份计划。
+可选：`plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution` 一组工具（grok-search MCP 提供）可把 6 阶段产物落到一个 `session_id` 上，跨调用累积同一份计划。openscry MCP 不提供 `plan_*` 工具；配置了 openscry MCP 的项目用 `research_plan` 一次输出全部阶段字段，字段对应见 SPEC.md §9.4。
 
 > **客户端命名提示**：在 Cursor / Windsurf / Claude Code 等具体客户端中，这些工具可能带客户端 prefix（如 `mcp5_plan_intent`、`mcp5_web_search`）。本 skill 正文统一使用 grok-search MCP 上游工具名（无 prefix）。客户端 prefix 仅在各客户端文档中作为示例出现，不影响本 skill 的方法论描述。
 
@@ -146,7 +151,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 
 **执行步骤**：
 1. 用 §3.1 启发式评级 1 / 2 / 3。
-2. 估算 `estimated_sub_queries` 和 `estimated_tool_calls`。
+2. 估算 `estimated_queries`（子查询数）和 `estimated_calls`（工具调用数）。
 3. 一句话写 `justification`。
 
 ### 4.3 decompose_sub_queries
@@ -173,7 +178,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 **目的**：给每个 sq 分配执行工具。
 
 **执行步骤**：
-1. 每个 sq 选一个工具（`web_search` / `web_fetch` / `web_map`）。
+1. 每个 sq 的 `tool_hint` 选一个工具（`web_search` / `web_fetch` / `web_map`）。
 2. 写一句 `reason`。
 3. 必要时指定 `params`（例如 `extra_sources=3`）。
 
@@ -184,7 +189,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 **执行步骤**：
 1. 列 `parallel_groups`：每个内层 list 是一轮可并发的 sq id。
 2. 列 `sequential`：必须按 `depends_on` 链顺序跑的 sq id。
-3. 估 `estimated_rounds` = `parallel_groups` 链长 + `sequential` 长度。
+3. 估 `estimated_rounds` = `parallel_groups` 链长 + `sequential` 长度；规划来自 openscry `research_plan` 时取 `parallel_groups` 的组数，见 SPEC.md §9.4。
 
 ### 4.7 archive_plan
 
@@ -276,3 +281,7 @@ grok-search MCP 工具的唯一事实源在 [`AoManoh/GrokSearch`](https://githu
 - **grok-search（待补）**：grok-search MCP 工具该怎么调、怎么诊断、怎么避坑——**执行层**
 
 二者协作但不重叠：本 skill 的 §3.4 工具映射、§4.5 map_to_tools 决定"用哪个工具"，但工具的具体调用参数、错误处理、信源后处理由 grok-search skill 治理。
+
+### 7.4 openscry MCP（仅项目配置了 openscry MCP 时适用）
+
+openscry 工具契约的事实源是 openscry 的 `tools/list` 与 CHANGELOG。调用方式、结果可信度信号、`research_plan` 输出与本 skill 字段的对应、归档验收和已知限制在 [SPEC.md](./SPEC.md) §9；该章与工具契约不一致时改该章。
