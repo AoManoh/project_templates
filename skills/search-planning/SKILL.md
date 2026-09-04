@@ -1,7 +1,7 @@
 # 搜索规划 Skill
 
 **skill_id**: `search-planning`
-**版本**: 1.2.0
+**版本**: 1.3.0
 **output_dir**: `docs/references/`
 
 ---
@@ -32,14 +32,14 @@
 | 依赖 | 用途 | 必要性 |
 |------|------|--------|
 | AGENTS.md | 项目根、事实源、产物路径约束 | 必需 |
-| 搜索 / 抓取 / 站点映射工具 | 执行规划产出的搜索动作 | 必需（任意一个） |
+| openscry MCP（`research_plan` / `web_search` / `web_search_batch` / `web_fetch` / `web_map`） | 生成规划、执行规划产出的检索动作 | 默认工具层；未配置时换成项目实际可用的检索工具 |
 | `view` / 源码访问 | 验证 `unverified_terms` 类外部分类 | 推荐 |
 
 ### 1.4 关联规范
 
 字段定义、复杂度评级、边界反模式、归档格式：[SPEC.md](./SPEC.md)
 
-项目配置了 openscry MCP 时，在首次调用 openscry 工具（含 `research_plan`）或判定 openscry 检索结果可信度之前，读取 [SPEC.md](./SPEC.md) §9；未配置 openscry MCP 的项目不读该章。
+项目配置了 openscry MCP 时，在首次调用 openscry 工具（含 `research_plan`）或判定 openscry 检索结果可信度之前，读取 [SPEC.md](./SPEC.md) §9。未配置 openscry MCP 的项目不读该章：仍按 SPEC.md §2–§8 的字段规划，把工具调用换成项目实际可用的检索工具。
 
 ### 1.5 Scope 边界
 
@@ -47,16 +47,11 @@
 
 **本 skill 不治理**：
 
-- 具体 grok-search MCP 工具（`web_search` / `web_fetch` / `web_map`）的配置、调用细节、信源获取、超时与重试策略
-- `get_config_info` / `switch_model` / `toggle_builtin_tools` 的安全边界
-- 代理隔离、API key 管理、模型选择策略
-- inline citation 解析与 `get_sources` 的调用时机
+- openscry 服务端的安装、部署、环境变量与 API key 管理
+- openscry 各工具内部的抓取分层、超时与重试实现
+- 检索结果正文的引用解析实现
 
-以上属于 grok-search MCP 完整使用面，由 `skills/grok-search/`（待补，独立任务）单独承接。本 skill 引用 grok-search MCP 的工具名（如 `plan_intent` / `web_search`）只用于"何时调用"和"按什么顺序调用"的方法论决策，不下沉到工具内部细节。
-
-例外：项目配置了 openscry MCP 时，openscry 工具的调用方式、结果可信度信号、`research_plan` 输出字段与本 skill 字段的对应、归档验收和已知限制由 [SPEC.md](./SPEC.md) §9 承载；该章只在项目配置了 openscry MCP 时读取，不改变上述 grok-search 边界。
-
-> 模板实例化说明：本 skill 的 6 阶段方法论与项目无关，可直接复用；其中 `grok-search` MCP 工具名、`skills/grok-search/` 以及 GrokSearch 仓库引用属于来源项目的示例绑定，实例化到非 GrokSearch 项目时，应改为该项目实际使用的搜索 / 抓取工具。
+本 skill 引用 openscry 工具名（如 `research_plan` / `web_search`）只用于"何时调用"和"按什么顺序调用"的方法论决策。openscry 工具的调用方式、结果可信度信号、`research_plan` 输出字段与本 skill 字段的对应、归档验收和已知限制由 [SPEC.md](./SPEC.md) §9 承载。
 
 ---
 
@@ -71,8 +66,9 @@
 | L1 至少完成 Phase 1-3，L2 至少完成 1-5，L3 全部 6 阶段 | 复杂度评级后 |
 | 每个子查询必须有可证伪的 `boundary` | Phase 3 |
 | 搜索词 ≤ 8 个词 | Phase 4 |
-| 工具映射给出一句话 `reason` | Phase 5 |
-| `parallel_groups` 内成员之间无 `depends_on` 关系 | Phase 6 |
+| 工具映射给出一句话 `reason`；综合 / 归纳类子查询不填 `tool_hint` | Phase 5 |
+| `parallel_groups` 覆盖全部子查询，同组成员之间无 `depends_on` 关系 | Phase 6 |
+| 没有 `tool_hint` 的子查询不调用检索工具，只基于前置子查询结果作答 | 执行阶段 |
 | 中大型调研必须落盘到 `docs/references/` | 计划生成后 |
 
 ---
@@ -109,26 +105,31 @@
 
 ### 3.4 工具映射
 
-| 现象 | 工具（一般名 / MCP 名） |
+| 现象 | 工具（openscry MCP） |
 |---|---|
-| 综合性"是什么 / 为什么 / 怎么样" | `web_search`（grok-search MCP）|
-| 已知 URL 取全文 | `web_fetch`（grok-search MCP，Tavily 主路径、Firecrawl 降级）|
-| 先发现 URL 拓扑 | `web_map`（grok-search MCP，Tavily Map）|
-| 时效性（"最新" / "今天"）| `web_search`（grok-search MCP 自注入当前时间上下文）|
-| Paywall / SPA | 跳过 `web_fetch`，让 `web_search` 走 LLM 索引 |
+| 综合性"是什么 / 为什么 / 怎么样" | `web_search` |
+| 同一轮内多个互不依赖的 `web_search` 子查询 | 合并为一次 `web_search_batch`（一批不超过 32 条） |
+| 已知 URL 取全文 | `web_fetch`（抓取层为 tavily / firecrawl / grok / http 之一，返回首行注释的 `tier=` 标明实际使用的层） |
+| 先发现 URL 拓扑 | `web_map` |
+| 时效性（"最新" / "今天"） | `web_search`，问句写明"截至今天"并要求区分 released / planned / rumored（SPEC.md §9.3.7） |
+| `web_fetch` 取不到完整正文（paywall、SPA、`partial content`） | 改用 `web_search`，直接问页面里的那个事实（SPEC.md §9.3.3） |
+| 综合 / 归纳前置子查询的结果 | 不填 `tool_hint`，不调用检索工具，只基于 `depends_on` 列出的前置子查询结果作答 |
 
-可选：`plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution` 一组工具（grok-search MCP 提供）可把 6 阶段产物落到一个 `session_id` 上，跨调用累积同一份计划。openscry MCP 不提供 `plan_*` 工具；配置了 openscry MCP 的项目用 `research_plan` 一次输出全部阶段字段，字段对应见 SPEC.md §9.4。
+规划阶段可调用 `research_plan`（参数 `question`）一次输出全部 6 阶段字段；它离线生成、不联网，字段对应见 SPEC.md §9.4。
 
-> **客户端命名提示**：在 Cursor / Windsurf / Claude Code 等具体客户端中，这些工具可能带客户端 prefix（如 `mcp5_plan_intent`、`mcp5_web_search`）。本 skill 正文统一使用 grok-search MCP 上游工具名（无 prefix）。客户端 prefix 仅在各客户端文档中作为示例出现，不影响本 skill 的方法论描述。
+> **客户端命名提示**：在 Cursor / Windsurf / Claude Code 等具体客户端中，这些工具可能带客户端 prefix（如 `mcp5_web_search`）。本 skill 正文统一使用 openscry `tools/list` 中的工具名（无 prefix）。客户端 prefix 仅在各客户端文档中作为示例出现，不影响本 skill 的方法论描述。
 
 ### 3.5 并行 vs 串行判定
 
-A 与 B 可放进同一个 `parallel_groups` 当且仅当：
+`parallel_groups` 按 `depends_on` 分层：第 1 组是没有 `depends_on` 的子查询；之后每一组的成员，其 `depends_on` 列出的前置全部位于更早的组中。每个子查询恰好出现在一个组里，`parallel_groups` 覆盖全部子查询。
 
-- `A.depends_on` 不含 `B.id` 且反之亦然
-- 在该轮预期并发下不会撞同一 API 配额上限
+`sequential` 列出所有带 `depends_on` 的子查询。这些子查询同时出现在 `parallel_groups` 的后续组里，所以 `sequential` 与 `parallel_groups` 重叠，不是互斥划分。
 
-`extra_sources > 0` 时把 `parallel_groups` 单组成员上限设为 3，除非已确认配额充足。`depends_on` 链上的 sq 全部进 `sequential`。
+A 与 B 可放进同一组当且仅当 `A.depends_on` 不含 `B.id` 且反之亦然。
+
+`estimated_rounds` = `parallel_groups` 的组数。
+
+`web_search` / `web_search_batch` 默认不传 `extra_sources`（SPEC.md §9.3.5）。传入 `extra_sources` 时，每条子查询会额外触发 Tavily / Firecrawl 检索；此时同一组一次合并进 `web_search_batch` 的子查询不超过 3 条，除非已确认 Tavily / Firecrawl 配额充足。
 
 ---
 
@@ -161,7 +162,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 **执行步骤**：
 1. 给每个 sq 唯一 id（`sq1`, `sq2`...）。
 2. 写 `goal` / `expected_output` / `boundary`。
-3. 标记 `depends_on`（其他 sq 的 id 列表）。
+3. 有前置的 sq 写 `depends_on`：字符串，多个前置 sq id 用英文逗号连接（如 `sq1,sq2`）；没有前置的 sq 不写该字段。
 4. 用 §3.3 反模式表自检 `boundary`。
 
 ### 4.4 draft_search_terms（L2+）
@@ -169,7 +170,7 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 **目的**：把 sq 转化为可输入到搜索工具的查询词。
 
 **执行步骤**：
-1. 每个 sq 至少给 1 个 `round=1` 搜索词（≤ 8 个词）。
+1. 每个有 `tool_hint` 的 sq 至少给 1 个 `round=1` 搜索词（≤ 8 个词）；综合 / 归纳类 sq 不需要搜索词。
 2. 整体选定 `approach` ∈ {`broad_first`, `narrow_first`, `targeted`}。
 3. 写 `round=2` 的 follow-up 触发条件（陌生术语、矛盾源、需要 fetch 单 URL 等）；停在 `round=2`，除非确实出现新触发条件。
 
@@ -178,18 +179,19 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
 **目的**：给每个 sq 分配执行工具。
 
 **执行步骤**：
-1. 每个 sq 的 `tool_hint` 选一个工具（`web_search` / `web_fetch` / `web_map`）。
+1. 需要检索的 sq 在 `tool_hint` 选一个工具（`web_search` / `web_fetch` / `web_map`）；综合 / 归纳类 sq 不填 `tool_hint`，执行时不调用检索工具，只基于前置 sq 的结果作答。
 2. 写一句 `reason`。
-3. 必要时指定 `params`（例如 `extra_sources=3`）。
+3. 必要时指定 `params`（例如仓库事实传 `platform=GitHub`；各工具可用参数见 SPEC.md §9.1）。
 
-### 4.6 plan_execution（L3）
+### 4.6 schedule_execution（L3）
 
 **目的**：给出执行顺序。
 
 **执行步骤**：
-1. 列 `parallel_groups`：每个内层 list 是一轮可并发的 sq id。
-2. 列 `sequential`：必须按 `depends_on` 链顺序跑的 sq id。
-3. 估 `estimated_rounds` = `parallel_groups` 链长 + `sequential` 长度；规划来自 openscry `research_plan` 时取 `parallel_groups` 的组数，见 SPEC.md §9.4。
+1. 列 `parallel_groups`：按 `depends_on` 分层，每个内层 list 是一轮可并发的 sq id；每个 sq 出现且只出现一次。
+2. 列 `sequential`：所有带 `depends_on` 的 sq id；它们同时位于 `parallel_groups` 的后续组中。
+3. `estimated_rounds` = `parallel_groups` 的组数。
+4. 规划来自 `research_plan` 时，`parallel_groups` 与 `sequential` 已由 openscry 按 `depends_on` 推导，直接采用；`strategies`（`fetch_before_claim` / `gap_check` / `fallback_plan`）原样归档，见 SPEC.md §9.4。
 
 ### 4.7 archive_plan
 
@@ -217,10 +219,12 @@ A 与 B 可放进同一个 `parallel_groups` 当且仅当：
    |
 5. map_to_tools (Phase 5)
    |  L2 在此停止
-6. plan_execution (Phase 6)
+6. schedule_execution (Phase 6)
    |
 7. 执行计划 -> archive_plan（中大型必须）
 ```
+
+项目配置了 openscry MCP 时，步骤 1-6 的字段可由一次 `research_plan` 调用产出；规划者补填 `research_plan` 不输出的 `unverified_terms` / `premise_valid` / `approach` / `reason` / `params` / `estimated_rounds`，再进入步骤 7。
 
 ### 5.2 与其他 Skill 配合
 
@@ -241,47 +245,24 @@ search-planning 本身不替代以上任何 skill，只为它们的"先调研再
 |---|---|
 | 子查询互相重叠（boundary 不互斥） | 退回 Phase 3 重写 boundary，或合并 sq |
 | 搜索词超过 8 个词 | 拆成多 round，或在 boundary 上收敛子查询 |
-| `parallel_groups` 内有 `depends_on` 关系 | 退回 Phase 6 把违规 sq 移到 `sequential` |
+| `parallel_groups` 同一组内有 `depends_on` 关系 | 退回 Phase 6，把该 sq 移到其全部前置所在组之后的组，并加入 `sequential` |
 | `unverified_terms` 检索结果与训练知识冲突 | 优先采用刚检索到的源，并在归档中标注更新理由 |
-| 大型调研中 API 配额耗尽 | 暂停执行，缩小 sq 数量或 `extra_sources`，记录在归档"执行结果"中 |
-| 工具不可用（如 `web_fetch` 失败） | 按 §3.4 替代规则降级（`fetch` → `web_search`），并在归档备注 |
+| 大型调研中 Tavily / Firecrawl 或上游配额耗尽 | 暂停执行，缩小 sq 数量或停止传 `extra_sources`，记录在归档"执行结果"中 |
+| `web_fetch` 失败或只取回部分正文 | 按 §3.4 改用 `web_search` 直接问页面里的那个事实，并在归档备注 |
+| `web_search` 结果尾注为 `> tools: 0`，或没有 `Sources` 列表 | 该结论视为未核验：改写问句重试，或用 `web_fetch` 读取一手页面（SPEC.md §9.2） |
 
 ---
 
 ## 7. 与上游事实源的关系
 
-本 skill 治理的是"多步调研规划方法论"，不直接维护工具实现。事实源分两类：
+本 skill 治理的是"多步调研规划方法论"，不维护工具实现。事实源分两类：
 
-### 7.1 实现事实源
+### 7.1 工具契约事实源
 
-grok-search MCP 工具的唯一事实源在 [`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) 仓库的源码中：
+openscry MCP 工具契约（工具名、参数名、输出字段、尾注格式）的事实源是 openscry 的 `tools/list` 与 CHANGELOG。[SPEC.md](./SPEC.md) §9 是 openscry 的使用说明，绑定 openscry v0.2.1，记录调用方式、结果可信度信号、`research_plan` 输出与本 skill 字段的对应、归档验收和已知限制；该章与工具契约不一致时改该章。
 
-- `src/grok_search/server.py`：13 个 MCP 工具的 `@mcp.tool()` 注册和 `Annotated` 字段说明（`web_search` / `get_sources` / `web_fetch` / `web_map` / `get_config_info` / `switch_model` / `toggle_builtin_tools` / `plan_intent` / `plan_complexity` / `plan_sub_query` / `plan_search_term` / `plan_tool_mapping` / `plan_execution`）
-- `src/grok_search/planning.py`：6 阶段 plan_* 工具的内部状态机与合并策略
-- `src/grok_search/sources.py`：信源缓存与 inline citation 解析
-- `README.md` 的"MCP 工具"章节：工具签名与默认参数对外说明
+本 skill 引用的工具名（如 `research_plan` / `web_search`）与 `research_plan` 输出字段名（如 `sub_queries[].tool_hint`、`execution.parallel_groups`）以 openscry 实际返回为准。
 
-发生工具语义变化（参数、阶段定义、字段约束）时**以这一组源码为唯一事实源**。本 skill 在引用工具名（如 `plan_intent`）和阶段语义（如"Phase 1 输出 core_question / query_type / time_sensitivity"）时，应保持与源码注解一致。
+### 7.2 方法论事实源
 
-### 7.2 process-only Anthropic Skill 镜像（可选）
-
-[`AoManoh/GrokSearch`](https://github.com/AoManoh/GrokSearch) fork 可能附带一份 process-only Anthropic Skills 包（位置约定为 `skills/search-planning/`），用于让支持 Claude Skills 自激活的客户端直接挂载。该镜像在不同时间点可能存在或缺失。如果存在：
-
-- 它是同一 6 阶段方法论的英文 process-only 形态
-- 它和本 skill 共享设计目标，但**不互为事实源**——双方都以 §7.1 的 Python 源码为最终事实源
-- 当上游镜像与本 skill 的中文表述发生措辞差异时，**方法论描述以本 skill 为准**（治理化中文版），**工具语义以源码为准**
-
-本 skill 不要求 GrokSearch fork 必须维护该镜像；如果该 fork 决定不维护，本 skill 不受影响。
-
-### 7.3 与待补 grok-search skill 的关系
-
-`skills/grok-search/`（待补，作为独立任务推进）将治理 grok-search MCP 完整使用面：配置诊断、搜索调用、信源获取、代理隔离、模型切换、内置 WebSearch/WebFetch 路由控制。它和本 skill 的边界：
-
-- **search-planning（本 skill）**：何时该调研、按什么顺序调研——**决策层**
-- **grok-search（待补）**：grok-search MCP 工具该怎么调、怎么诊断、怎么避坑——**执行层**
-
-二者协作但不重叠：本 skill 的 §3.4 工具映射、§4.5 map_to_tools 决定"用哪个工具"，但工具的具体调用参数、错误处理、信源后处理由 grok-search skill 治理。
-
-### 7.4 openscry MCP（仅项目配置了 openscry MCP 时适用）
-
-openscry 工具契约的事实源是 openscry 的 `tools/list` 与 CHANGELOG。调用方式、结果可信度信号、`research_plan` 输出与本 skill 字段的对应、归档验收和已知限制在 [SPEC.md](./SPEC.md) §9；该章与工具契约不一致时改该章。
+6 阶段字段、复杂度评级、边界反模式、退出门禁与归档模板以 [SPEC.md](./SPEC.md) §2–§7 为唯一事实源。`research_plan` 不输出的字段（`unverified_terms` / `premise_valid` / `approach` / `reason` / `params` / `estimated_rounds`）由本 skill 定义，与工具契约无关。
