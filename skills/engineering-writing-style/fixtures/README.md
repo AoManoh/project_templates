@@ -7,6 +7,8 @@
 - `01-metaphor-commit-message.md`：取自公开仓库 openace-mcp 的真实提交 `3f332e0` 正文，隐喻化工作简称密集。
 - `02-ability-words.md`：取自同一仓库提交信息与其未采用的重写草稿中的真实句子，覆盖“无法/不能”的错误用法与合法用法。
 - `03-noise-patterns.md`：取自未采用重写草稿的三类噪声句式。
+- `04-comment-selfcontained.md`：取自同一仓库 `internal/reliability/classify.go` 同一函数注释的三个真实版本（两反一正）。
+- `05-translation-tone-and-abbreviations.md`：取自 linux.do 帖子 2850228 的错误示范与修改后示范，覆盖翻译腔动词、缩减词、引号强调、生造词与“不是……而是……”。
 
 全部文本已核对：不含密钥、内网地址、个人信息或未公开业务数据。
 
